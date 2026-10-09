@@ -2,6 +2,8 @@
 
 A personal launcher for GNOME. Press a key, type, press Enter.
 
+![Parsec searching for "neo": matched letters highlighted, results grouped by provider](docs/screenshot.png)
+
 Apps, your git projects, a shell runner, GitHub repositories and pull requests,
 clipboard history with pinned snippets, and KeePass entries, all in one dark
 panel that follows you between machines: everything that depends on the host

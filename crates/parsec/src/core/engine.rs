@@ -112,7 +112,8 @@ impl Engine {
                 .then_with(|| a.1.item.title.cmp(&b.1.item.title))
         });
         scored.truncate(RESULT_LIMIT);
-        scored.into_iter().map(|(_, h)| h).collect()
+        let hits: Vec<Hit> = scored.into_iter().map(|(_, h)| h).collect();
+        group_by_provider(hits)
     }
 
     /// Execute the item's action at `index` (0 = default) and record the pick.
@@ -133,6 +134,22 @@ impl Engine {
         frec.save();
         Ok(Outcome::Done)
     }
+}
+
+/// Keep rank order between providers (by their best hit) but gather each
+/// provider's hits together, so a section header appears once.
+fn group_by_provider(hits: Vec<Hit>) -> Vec<Hit> {
+    let mut order: Vec<&'static str> = Vec::new();
+    for h in &hits {
+        if !order.contains(&h.provider) {
+            order.push(h.provider);
+        }
+    }
+    let mut out = Vec::with_capacity(hits.len());
+    for p in order {
+        out.extend(hits.iter().filter(|h| h.provider == p).cloned());
+    }
+    out
 }
 
 fn hit(p: &dyn Provider, q: &Query<'_>, item: Item) -> Hit {
