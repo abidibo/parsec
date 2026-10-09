@@ -1,0 +1,216 @@
+use super::frecency::Frecency;
+use super::{secrets, ActionKind, Item, Matcher, Prompt, Provider, Query};
+use anyhow::{Context, Result};
+use gtk::gio;
+use gtk::glib;
+use gtk::prelude::*;
+use std::cell::RefCell;
+
+/// Owns the providers, the matcher and the frecency store. One per process,
+/// living on the GTK main thread behind an `Rc`.
+pub struct Engine {
+    providers: Vec<Box<dyn Provider>>,
+    matcher: Matcher,
+    frecency: RefCell<Frecency>,
+}
+
+pub const RESULT_LIMIT: usize = 10;
+
+impl Engine {
+    pub fn new(providers: Vec<Box<dyn Provider>>) -> Self {
+        Self {
+            providers,
+            matcher: Matcher::new(),
+            frecency: RefCell::new(Frecency::load()),
+        }
+    }
+
+    /// Run the query through every applicable provider, apply frecency, sort.
+    pub async fn search(&self, raw: &str) -> Vec<Item> {
+        let raw = raw.trim_start();
+        let mut items: Vec<Item> = Vec::new();
+
+        let verb_active = self.providers.iter().any(|o| {
+            o.prefix()
+                .is_some_and(|pre| strip_verb(raw, &pre).is_some())
+        });
+
+        for p in &self.providers {
+            let text = match p.prefix() {
+                Some(prefix) => match strip_verb(raw, &prefix) {
+                    Some(rest) => rest,
+                    None => continue,
+                },
+                None => {
+                    // A prefixed query is for that provider alone.
+                    if verb_active {
+                        continue;
+                    }
+                    raw
+                }
+            };
+            let q = Query::new(text, &self.matcher);
+            let found = p.query(&q).await;
+            tracing::trace!(provider = p.id(), count = found.len(), "provider results");
+            items.extend(found);
+        }
+
+        let frec = self.frecency.borrow();
+        if raw.is_empty() {
+            // Launcher just opened: show things we've picked before.
+            items.retain(|i| frec.has(&i.id));
+        }
+
+        let mut scored: Vec<(f64, Item)> = items
+            .into_iter()
+            .map(|i| {
+                let s = (i.score.max(1) as f64) * frec.boost(&i.id);
+                (s, i)
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.title.cmp(&b.1.title)));
+        scored.truncate(RESULT_LIMIT);
+        scored.into_iter().map(|(_, i)| i).collect()
+    }
+
+    /// Execute the item's action at `index` (0 = default) and record the pick.
+    pub fn activate(&self, item: &Item, index: usize) -> Result<Outcome> {
+        let action = item
+            .actions
+            .get(index)
+            .or_else(|| item.actions.first())
+            .context("item has no actions")?;
+        tracing::info!(id = %item.id, action = %action.label, "activate");
+        if let ActionKind::Prompt(p) = &action.kind {
+            // Not a pick yet; the provider decides what happens after input.
+            return Ok(Outcome::Prompt(p.clone()));
+        }
+        run(&action.kind)?;
+        let mut frec = self.frecency.borrow_mut();
+        frec.record(&item.id);
+        frec.save();
+        Ok(Outcome::Done)
+    }
+}
+
+/// What the UI should do after an activation.
+pub enum Outcome {
+    /// Hide the launcher, the action ran.
+    Done,
+    /// Keep the launcher open and collect input.
+    Prompt(Prompt),
+}
+
+/// Clear the clipboard after a delay, unless something else was copied in
+/// the meantime (checked when the compositor lets us read without stealing
+/// focus; otherwise cleared unconditionally).
+fn schedule_clipboard_clear(text: String, after_secs: u64) {
+    glib::timeout_add_local_once(std::time::Duration::from_secs(after_secs), move || {
+        glib::spawn_future_local(async move {
+            let current = gio::spawn_blocking(crate::providers::clipboard::current_text)
+                .await
+                .ok()
+                .flatten();
+            let still_there = current.as_deref().is_none_or(|c| c == text);
+            if still_there {
+                tracing::info!("clearing copied secret from the clipboard");
+                let _ = std::process::Command::new("wl-copy")
+                    .arg("--clear")
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+        });
+    });
+}
+
+/// `gh foo` -> Some("foo"), `gh` -> Some(""), `ghost` -> None.
+/// A symbol prefix like `$` needs no separator: `$ls` works.
+fn strip_verb<'a>(raw: &'a str, prefix: &str) -> Option<&'a str> {
+    let rest = raw.strip_prefix(prefix)?;
+    let word_like = prefix.chars().last().is_some_and(|c| c.is_alphanumeric());
+    if word_like && !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
+        return None;
+    }
+    Some(rest.trim_start())
+}
+
+/// Put text on the clipboard. `wl-copy` is preferred: it forks a process
+/// that keeps serving the selection after our window is hidden, which the
+/// GTK clipboard cannot guarantee on Wayland. GTK is the fallback.
+fn copy_text(text: &str) -> Result<()> {
+    if crate::detect::which("wl-copy").is_some() {
+        use std::io::Write;
+        let mut child = std::process::Command::new("wl-copy")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .context("spawning wl-copy")?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(text.as_bytes())
+                .context("writing to wl-copy")?;
+        }
+        return Ok(());
+    }
+    let display = gtk::gdk::Display::default().context("no display")?;
+    display.clipboard().set_text(text);
+    Ok(())
+}
+
+fn run(kind: &ActionKind) -> Result<()> {
+    match kind {
+        ActionKind::LaunchApp(info) => {
+            let ctx = gtk::gdk::Display::default().map(|d| d.app_launch_context());
+            info.launch(&[], ctx.as_ref())
+                .with_context(|| format!("launching {}", info.id().unwrap_or_default()))?;
+        }
+        ActionKind::Command(argv) => {
+            let (program, args) = argv.split_first().context("empty command")?;
+            std::process::Command::new(program)
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .with_context(|| format!("spawning {program}"))?;
+        }
+        ActionKind::CopyText(text) => copy_text(text)?,
+        ActionKind::CopySecret {
+            text,
+            clear_after_secs,
+        } => {
+            secrets::remember(text);
+            copy_text(text)?;
+            if *clear_after_secs > 0 {
+                schedule_clipboard_clear(text.clone(), *clear_after_secs);
+            }
+        }
+        ActionKind::Callback(f) => f()?,
+        ActionKind::Prompt(_) => unreachable!("prompts are handled by the UI"),
+        ActionKind::OpenUri(uri) => {
+            gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>)
+                .with_context(|| format!("opening {uri}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_verb;
+
+    #[test]
+    fn word_prefix_needs_boundary() {
+        assert_eq!(strip_verb("gh foo", "gh"), Some("foo"));
+        assert_eq!(strip_verb("gh", "gh"), Some(""));
+        assert_eq!(strip_verb("ghost", "gh"), None);
+    }
+
+    #[test]
+    fn symbol_prefix_needs_none() {
+        assert_eq!(strip_verb("$ls -la", "$"), Some("ls -la"));
+        assert_eq!(strip_verb("$ ls", "$"), Some("ls"));
+    }
+}

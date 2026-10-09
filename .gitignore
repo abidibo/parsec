@@ -1,0 +1,10 @@
+# build output
+/target
+# dev script log
+/dev.log
+# editor and OS noise
+*.swp
+*~
+.idea/
+.vscode/
+.DS_Store

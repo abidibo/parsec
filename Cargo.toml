@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/parsec"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.82"
+repository = "https://github.com/abidibo/parsec"
+authors = ["abidibo <abidibo@gmail.com>"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

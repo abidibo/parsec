@@ -1,0 +1,29 @@
+[package]
+name = "parsec"
+description = "A personal GNOME launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "parsec"
+path = "src/main.rs"
+
+[dependencies]
+adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+dirs = "7.0.0"
+gio-unix = "0.22"
+gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
+keepass = "0.15"
+nucleo-matcher = "0.3.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+shlex = "2.0.1"
+toml = "1.1.8"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Parsec
+Comment=A personal launcher
+Exec=parsec --background
+Icon=org.abidibo.Parsec
+Terminal=false
+Categories=Utility;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
