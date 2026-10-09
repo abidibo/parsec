@@ -513,17 +513,51 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
 
     let hotkey = adw::PreferencesGroup::builder()
         .title("Hotkey")
-        .description(
-            "Parsec is toggled by a GNOME custom shortcut running \"parsec toggle\". \
-             Change the key combination in GNOME Settings.",
-        )
+        .description("The key combination that opens Parsec, stored as a GNOME custom shortcut.")
         .build();
-    let open_keys = link_row(
-        "Open Keyboard Settings",
+    let shown = |accel: Option<String>| match accel {
+        Some(a) => crate::ui::hotkey::label(&a),
+        None => "Not set".to_string(),
+    };
+    let key_row = adw::ActionRow::builder()
+        .title("Open Parsec")
+        .subtitle(shown(crate::ui::hotkey::current()))
+        .build();
+    key_row.add_prefix(&gtk::Image::from_icon_name(
         "preferences-desktop-keyboard-shortcuts-symbolic",
-    );
-    open_keys.connect_activated(|_| spawn(&["gnome-control-center", "keyboard"]));
-    hotkey.add(&open_keys);
+    ));
+    let change = gtk::Button::builder()
+        .label("Change…")
+        .valign(gtk::Align::Center)
+        .build();
+    change.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        key_row,
+        move |_| {
+            let key_row = key_row.clone();
+            let w = window.clone();
+            crate::ui::hotkey::capture(&window, move |result| match result {
+                Some(accel) => {
+                    key_row.set_subtitle(&crate::ui::hotkey::label(&accel));
+                    w.add_toast(adw::Toast::new(&format!(
+                        "Hotkey set to {}",
+                        crate::ui::hotkey::label(&accel)
+                    )));
+                }
+                None => {
+                    if crate::ui::hotkey::current().is_none() {
+                        w.add_toast(adw::Toast::new(
+                            "Could not save: GNOME keyboard settings not available",
+                        ));
+                    }
+                }
+            });
+        }
+    ));
+    key_row.add_suffix(&change);
+    hotkey.add(&key_row);
     page.add(&hotkey);
 
     let look = adw::PreferencesGroup::builder()
@@ -830,11 +864,4 @@ fn link_row(title: &str, icon: &str) -> adw::ActionRow {
     row.add_prefix(&gtk::Image::from_icon_name(icon));
     row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
     row
-}
-
-fn spawn(argv: &[&str]) {
-    let (program, args) = argv.split_first().expect("non-empty argv");
-    if let Err(e) = std::process::Command::new(program).args(args).spawn() {
-        tracing::warn!("cannot run {program}: {e}");
-    }
 }

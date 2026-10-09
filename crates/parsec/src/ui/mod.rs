@@ -1,3 +1,4 @@
+pub mod hotkey;
 pub mod plugins_page;
 pub mod preferences;
 pub mod shortcuts_page;
