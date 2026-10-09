@@ -408,6 +408,19 @@ impl Provider for PluginHost {
         "plugins"
     }
 
+    fn title(&self) -> String {
+        "Plugins".into()
+    }
+
+    fn verb_label(&self, verb: &str) -> String {
+        self.plugins
+            .borrow()
+            .iter()
+            .find(|p| p.borrow().info.manifest.keywords.iter().any(|k| k == verb))
+            .map(|p| p.borrow().info.manifest.name.clone())
+            .unwrap_or_else(|| "Plugin".into())
+    }
+
     fn prefixes(&self) -> Vec<String> {
         self.refresh();
         self.plugins

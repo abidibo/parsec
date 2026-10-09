@@ -1,5 +1,5 @@
 use super::frecency::Frecency;
-use super::{secrets, ActionKind, Item, Matcher, Prompt, Provider, Query};
+use super::{secrets, ActionKind, Hit, Item, Matcher, Prompt, Provider, Query};
 use anyhow::{Context, Result};
 use gtk::gio;
 use gtk::glib;
@@ -25,10 +25,39 @@ impl Engine {
         }
     }
 
-    /// Run the query through every applicable provider, apply frecency, sort.
-    pub async fn search(&self, raw: &str) -> Vec<Item> {
+    /// The keyword at the start of `raw`, with the name to show for it.
+    pub fn verb_info(&self, raw: &str) -> Option<(String, String)> {
         let raw = raw.trim_start();
-        let mut items: Vec<Item> = Vec::new();
+        for p in &self.providers {
+            for pre in p.prefixes() {
+                if strip_verb(raw, &pre).is_some() {
+                    return Some((pre.clone(), p.verb_label(&pre)));
+                }
+            }
+        }
+        None
+    }
+
+    /// Every keyword with its label, in provider order.
+    pub fn verbs(&self) -> Vec<(String, String)> {
+        self.providers
+            .iter()
+            .flat_map(|p| {
+                p.prefixes()
+                    .into_iter()
+                    .map(|pre| {
+                        let label = p.verb_label(&pre);
+                        (pre, label)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// Run the query through every applicable provider, apply frecency, sort.
+    pub async fn search(&self, raw: &str) -> Vec<Hit> {
+        let raw = raw.trim_start();
+        let mut items: Vec<Hit> = Vec::new();
 
         let verb_active = self.providers.iter().any(|o| {
             o.prefixes()
@@ -54,32 +83,36 @@ impl Engine {
             let q = Query::new(text, verb, &self.matcher);
             let found = p.query(&q).await;
             tracing::trace!(provider = p.id(), count = found.len(), "provider results");
-            items.extend(found);
+            items.extend(found.into_iter().map(|item| hit(p.as_ref(), &q, item)));
         }
 
         if items.is_empty() && !raw.is_empty() && !verb_active {
             let q = Query::new(raw, None, &self.matcher);
             for p in &self.providers {
-                items.extend(p.fallback(&q).await);
+                let found = p.fallback(&q).await;
+                items.extend(found.into_iter().map(|item| hit(p.as_ref(), &q, item)));
             }
         }
 
         let frec = self.frecency.borrow();
         if raw.is_empty() {
             // Launcher just opened: show things we've picked before.
-            items.retain(|i| frec.has(&i.id));
+            items.retain(|h| frec.has(&h.item.id));
         }
 
-        let mut scored: Vec<(f64, Item)> = items
+        let mut scored: Vec<(f64, Hit)> = items
             .into_iter()
-            .map(|i| {
-                let s = (i.score.max(1) as f64) * frec.boost(&i.id);
-                (s, i)
+            .map(|h| {
+                let s = (h.item.score.max(1) as f64) * frec.boost(&h.item.id);
+                (s, h)
             })
             .collect();
-        scored.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.title.cmp(&b.1.title)));
+        scored.sort_by(|a, b| {
+            b.0.total_cmp(&a.0)
+                .then_with(|| a.1.item.title.cmp(&b.1.item.title))
+        });
         scored.truncate(RESULT_LIMIT);
-        scored.into_iter().map(|(_, i)| i).collect()
+        scored.into_iter().map(|(_, h)| h).collect()
     }
 
     /// Execute the item's action at `index` (0 = default) and record the pick.
@@ -99,6 +132,20 @@ impl Engine {
         frec.record(&item.id);
         frec.save();
         Ok(Outcome::Done)
+    }
+}
+
+fn hit(p: &dyn Provider, q: &Query<'_>, item: Item) -> Hit {
+    let highlight = if q.is_empty() {
+        Vec::new()
+    } else {
+        q.indices(&item.title)
+    };
+    Hit {
+        section: p.title(),
+        provider: p.id(),
+        highlight,
+        item,
     }
 }
 

@@ -132,6 +132,10 @@ impl Provider for GithubRepos {
         "github"
     }
 
+    fn title(&self) -> String {
+        "GitHub".into()
+    }
+
     fn prefixes(&self) -> Vec<String> {
         vec![self.cfg.borrow().verbs.github.clone()]
     }
@@ -217,6 +221,10 @@ impl GithubPrs {
 impl Provider for GithubPrs {
     fn id(&self) -> &'static str {
         "github-prs"
+    }
+
+    fn title(&self) -> String {
+        "Pull requests".into()
     }
 
     fn prefixes(&self) -> Vec<String> {

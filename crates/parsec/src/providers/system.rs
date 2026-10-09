@@ -56,6 +56,10 @@ impl Provider for SystemProvider {
         "system"
     }
 
+    fn title(&self) -> String {
+        "Parsec".into()
+    }
+
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         if q.is_empty() {
             return Vec::new();

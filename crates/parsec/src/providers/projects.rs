@@ -103,6 +103,10 @@ impl Provider for ProjectsProvider {
         "projects"
     }
 
+    fn title(&self) -> String {
+        "Projects".into()
+    }
+
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         self.ensure_fresh().await;
         let cfg = self.cfg.borrow();

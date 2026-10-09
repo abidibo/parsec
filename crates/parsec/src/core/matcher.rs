@@ -35,6 +35,21 @@ impl Matcher {
         pattern.score(Utf32Str::new(haystack, &mut buf), &mut inner)
     }
 
+    /// Character positions of the match in `haystack`, sorted, deduplicated.
+    pub fn indices(&self, pattern: &Pattern, haystack: &str) -> Vec<u32> {
+        let mut buf = self.buf.borrow_mut();
+        let mut inner = self.inner.borrow_mut();
+        let mut out = Vec::new();
+        if pattern
+            .indices(Utf32Str::new(haystack, &mut buf), &mut inner, &mut out)
+            .is_some()
+        {
+            out.sort_unstable();
+            out.dedup();
+        }
+        out
+    }
+
     /// Best score across several candidate strings (name, keywords, exe...).
     pub fn score_any<'a, I>(&self, pattern: &Pattern, haystacks: I) -> Option<u32>
     where

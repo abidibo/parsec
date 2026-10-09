@@ -88,6 +88,10 @@ impl Provider for ClipboardProvider {
         "clipboard"
     }
 
+    fn title(&self) -> String {
+        "Clipboard".into()
+    }
+
     fn prefixes(&self) -> Vec<String> {
         vec![self.cfg.borrow().verbs.clipboard.clone()]
     }

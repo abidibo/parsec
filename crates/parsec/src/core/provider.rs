@@ -30,6 +30,10 @@ impl<'a> Query<'a> {
         self.matcher.score(&self.pattern, haystack)
     }
 
+    pub fn indices(&self, haystack: &str) -> Vec<u32> {
+        self.matcher.indices(&self.pattern, haystack)
+    }
+
     pub fn score_any<'b, I>(&self, haystacks: I) -> Option<u32>
     where
         I: IntoIterator<Item = &'b str>,
@@ -47,6 +51,21 @@ impl<'a> Query<'a> {
 pub trait Provider {
     /// Short stable identifier, also used as the item id namespace.
     fn id(&self) -> &'static str;
+
+    /// Human name, used as a section header when results are mixed.
+    fn title(&self) -> String {
+        let id = self.id();
+        let mut c = id.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }
+
+    /// Name shown in the search bar chip while `verb` is active.
+    fn verb_label(&self, _verb: &str) -> String {
+        self.title()
+    }
 
     /// Trigger words. `["$"]` means the provider only runs when the query
     /// starts with `$`, and it receives the remainder with `q.verb == "$"`.

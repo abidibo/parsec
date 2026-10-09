@@ -2,6 +2,17 @@ use gtk::gio;
 use gtk::prelude::*;
 use std::rc::Rc;
 
+/// An item as the engine hands it to the UI: with its provider and the
+/// matched character positions in the title.
+#[derive(Debug, Clone)]
+pub struct Hit {
+    pub item: Item,
+    pub provider: &'static str,
+    /// Section header text when results are mixed.
+    pub section: String,
+    pub highlight: Vec<u32>,
+}
+
 /// A single search result. Providers produce these; the UI renders them;
 /// the engine ranks them and records picks for frecency.
 #[derive(Debug, Clone)]

@@ -141,6 +141,20 @@ impl Provider for ShortcutsProvider {
         "shortcuts"
     }
 
+    fn title(&self) -> String {
+        "Shortcuts".into()
+    }
+
+    fn verb_label(&self, verb: &str) -> String {
+        self.cfg
+            .borrow()
+            .shortcuts
+            .iter()
+            .find(|s| s.keyword == verb)
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| "Shortcut".into())
+    }
+
     fn prefixes(&self) -> Vec<String> {
         self.cfg
             .borrow()

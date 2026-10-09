@@ -88,6 +88,10 @@ impl Provider for AppsProvider {
         "apps"
     }
 
+    fn title(&self) -> String {
+        "Apps".into()
+    }
+
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         let entries = self.entries.borrow();
         entries

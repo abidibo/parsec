@@ -258,6 +258,10 @@ impl Provider for KeepassProvider {
         "keepass"
     }
 
+    fn title(&self) -> String {
+        "KeePass".into()
+    }
+
     fn prefixes(&self) -> Vec<String> {
         vec![self.cfg.borrow().verbs.keepass.clone()]
     }

@@ -32,6 +32,10 @@ impl Provider for ShellProvider {
         "shell"
     }
 
+    fn title(&self) -> String {
+        "Shell".into()
+    }
+
     fn prefixes(&self) -> Vec<String> {
         vec![self.cfg.borrow().verbs.shell.clone()]
     }

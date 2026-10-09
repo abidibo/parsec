@@ -129,7 +129,8 @@ fn query_once(text: &str) -> glib::ExitCode {
     let engine = core::Engine::new(providers::all(cfg, false));
     let started = std::time::Instant::now();
     let items = glib::MainContext::default().block_on(engine.search(text));
-    for (i, item) in items.iter().enumerate() {
+    for (i, hit) in items.iter().enumerate() {
+        let item = &hit.item;
         let actions: Vec<&str> = item.actions.iter().map(|a| a.label.as_str()).collect();
         println!(
             "{:>2}. {:<40} {:<40} [{}]",
