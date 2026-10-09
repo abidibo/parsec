@@ -4,6 +4,7 @@ mod brand;
 mod config;
 mod core;
 mod detect;
+mod plugins;
 mod providers;
 mod ui;
 
@@ -26,6 +27,7 @@ fn main() -> glib::ExitCode {
              parsec query <text>  run a search once and print results (debugging)\n  \
              parsec config        print the effective configuration and its path\n  \
              parsec settings      open the settings window\n  \
+             parsec plugin list | install <zip|dir|git-url> | remove <id>\n  \
              parsec --background  start the daemon without showing the window\n  \
              parsec toggle        same as plain `parsec`, reads better in keybindings"
         );
@@ -35,6 +37,9 @@ fn main() -> glib::ExitCode {
         println!("# {}", config::Config::path().display());
         print!("{}", config::Config::load().to_commented_toml());
         return glib::ExitCode::SUCCESS;
+    }
+    if args.get(1).map(String::as_str) == Some("plugin") {
+        return plugin_command(&args[2..]);
     }
     if args.get(1).map(String::as_str) == Some("query") {
         let text = args[2..].join(" ");
@@ -57,6 +62,66 @@ fn main() -> glib::ExitCode {
 }
 
 use gtk::glib;
+
+fn plugin_command(args: &[String]) -> glib::ExitCode {
+    match args.first().map(String::as_str) {
+        Some("list") => {
+            let all = plugins::installed();
+            if all.is_empty() {
+                println!("no plugins in {}", plugins::dir().display());
+            }
+            for p in all {
+                let m = &p.manifest;
+                println!(
+                    "{:<16} {:<8} {:<12} {}",
+                    m.id,
+                    m.version,
+                    m.keywords.join(","),
+                    m.description
+                );
+            }
+            glib::ExitCode::SUCCESS
+        }
+        Some("install") => match args.get(1) {
+            Some(src) => match plugins::install(src) {
+                Ok(p) => {
+                    println!(
+                        "installed {} {} into {}",
+                        p.manifest.id,
+                        p.manifest.version,
+                        p.dir.display()
+                    );
+                    glib::ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("error: {e:#}");
+                    glib::ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("usage: parsec plugin install <zip|dir|git-url>");
+                glib::ExitCode::FAILURE
+            }
+        },
+        Some("remove") => match args.get(1) {
+            Some(id) => match plugins::remove(id) {
+                Ok(()) => glib::ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e:#}");
+                    glib::ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("usage: parsec plugin remove <id>");
+                glib::ExitCode::FAILURE
+            }
+        },
+        _ => {
+            eprintln!("usage: parsec plugin list | install <zip|dir|git-url> | remove <id>");
+            glib::ExitCode::FAILURE
+        }
+    }
+}
 
 /// Run one search through the engine with no window, for debugging providers.
 fn query_once(text: &str) -> glib::ExitCode {

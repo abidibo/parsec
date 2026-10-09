@@ -38,19 +38,17 @@ impl Engine {
 
         for p in &self.providers {
             let prefixes = p.prefixes();
-            let (text, verb) = if prefixes.is_empty() {
-                // A prefixed query is for that provider alone.
-                if verb_active {
-                    continue;
-                }
-                (raw, None)
-            } else {
-                match prefixes
-                    .iter()
-                    .find_map(|pre| strip_verb(raw, pre).map(|rest| (rest, pre.as_str())))
-                {
-                    Some((rest, verb)) => (rest, Some(verb)),
-                    None => continue,
+            let matched = prefixes
+                .iter()
+                .find_map(|pre| strip_verb(raw, pre).map(|rest| (rest, pre.as_str())));
+            let (text, verb) = match matched {
+                Some((rest, verb)) => (rest, Some(verb)),
+                None => {
+                    // A prefixed query is for that provider alone.
+                    if verb_active || !(prefixes.is_empty() || p.accepts_unprefixed()) {
+                        continue;
+                    }
+                    (raw, None)
                 }
             };
             let q = Query::new(text, verb, &self.matcher);

@@ -17,6 +17,7 @@ adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
 anyhow = "1.0.104"
 async-trait = "0.1.92"
 dirs = "7.0.0"
+futures-util = "0.3.34"
 gio-unix = "0.22"
 gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
 keepass = "0.15"
@@ -28,3 +29,4 @@ shlex = "2.0.1"
 toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+zip = { version = "5.0.1", default-features = false, features = ["deflate"] }

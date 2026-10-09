@@ -55,6 +55,12 @@ pub trait Provider {
         Vec::new()
     }
 
+    /// A provider with keywords that also wants plain queries (plugins
+    /// without keywords live behind a host that has some).
+    fn accepts_unprefixed(&self) -> bool {
+        false
+    }
+
     /// Produce items for this query. An empty query means "the launcher just
     /// opened": return cheap candidates (the engine keeps those with frecency).
     async fn query(&self, q: &Query<'_>) -> Vec<Item>;

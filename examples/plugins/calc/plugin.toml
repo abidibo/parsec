@@ -1,0 +1,8 @@
+name = "Calculator"
+id = "calc"
+version = "0.1.0"
+description = "Evaluate arithmetic: = 2 * (3 + 4), = 2**10, = sqrt(2)"
+author = "abidibo"
+keywords = ["="]
+exec = "main.py"
+icon = "accessories-calculator-symbolic"

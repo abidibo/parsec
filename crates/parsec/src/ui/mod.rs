@@ -1,3 +1,4 @@
+pub mod plugins_page;
 pub mod preferences;
 pub mod shortcuts_page;
 pub mod window;

@@ -40,6 +40,7 @@ fn build(app: &adw::Application, cfg: SharedConfig) -> adw::PreferencesWindow {
     window.add(&general_page(&window, cfg.clone()));
     window.add(&providers_page(&window, cfg.clone()));
     window.add(&crate::ui::shortcuts_page::page(&window, cfg.clone()));
+    window.add(&crate::ui::plugins_page::page(&window, cfg.clone()));
     window
 }
 

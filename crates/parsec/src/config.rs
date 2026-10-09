@@ -29,6 +29,14 @@ pub struct Config {
     pub keepass: Keepass,
     pub verbs: Verbs,
     pub shortcuts: Vec<Shortcut>,
+    pub plugins: Plugins,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct Plugins {
+    /// Installed plugins that should not run.
+    pub disabled: Vec<String>,
 }
 
 /// A user keyword: a search URL with `{query}` (or `%s`), or a script that
@@ -200,6 +208,7 @@ impl Default for Config {
             keepass: Keepass::default(),
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),
+            plugins: Plugins::default(),
         }
     }
 }
@@ -345,6 +354,10 @@ prs = {v_prs}
 clipboard = {v_clip}
 keepass = {v_kp}
 
+[plugins]
+# Installed plugins (see Settings › Plugins) that should stay off.
+disabled = {plugins_disabled}
+
 # Custom keywords. `command` is a URL with {{query}} (or %s), or a script
 # that receives the text as $1. Edit them in Settings › Shortcuts.
 {shortcuts}"#,
@@ -370,6 +383,7 @@ keepass = {v_kp}
             kp_skip = toml_array(&self.keepass.skip_groups),
             v_kp = toml_str(&self.verbs.keepass),
             shortcuts = shortcuts_toml(&self.shortcuts),
+            plugins_disabled = toml_array(&self.plugins.disabled),
         )
     }
 
@@ -492,6 +506,7 @@ mod tests {
             keepass: Keepass::default(),
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),
+            plugins: Plugins::default(),
         }
     }
 

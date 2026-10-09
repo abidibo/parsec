@@ -68,6 +68,12 @@ Target: GNOME 46+, Wayland.
   default search, run without args) with an editor in settings. Providers can
   own several keywords and offer fallback suggestions when nothing matched.
 
+- 2026-10-09: plugins. JSON-lines protocol over stdin/stdout, one process per
+  plugin, 3 s timeout with restart, manifest in plugin.toml, install from zip,
+  folder or git (settings page and `parsec plugin`), enable/disable in config,
+  host rescans on directory change. Sample: examples/plugins/calc (Python).
+  This closes the "external plugins" half of the extensibility decision.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

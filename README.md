@@ -17,6 +17,7 @@ Rust, GTK 4, libadwaita. Wayland first.
 - [First run](#first-run)
 - [Using it](#using-it)
 - [Settings and configuration](#settings-and-configuration)
+- [Plugins](#plugins)
 - [Styling](#styling)
 - [Command line](#command-line)
 - [Development](#development)
@@ -116,6 +117,7 @@ narrows the search to one of them.
 | `cb text` | clipboard history |
 | `kp name` | KeePass entries, after unlocking |
 | `g query`, `w query` | custom shortcuts: Google and Wikipedia by default, add your own |
+| `= 2*(3+4)` | the calculator plugin, once installed |
 | `parsec` | Parsec's own entries: settings, quit |
 
 Keys:
@@ -252,6 +254,73 @@ when there is nothing to run. Some terminals:
 ["foot", "--working-directory={cwd}", "{exec}"]
 ```
 
+## Plugins
+
+A plugin is a small program in any language that Parsec starts once and
+talks to over stdin/stdout, one JSON object per line. Plugins live in
+`~/.local/share/parsec/plugins/<id>/`.
+
+### Installing
+
+Settings › Plugins installs from a `.zip`, a folder, or a git URL, and lists
+what is installed with an on/off switch and a remove button. From a shell:
+
+```sh
+parsec plugin install ~/Downloads/some-plugin.zip
+parsec plugin install https://github.com/someone/parsec-something
+parsec plugin install examples/plugins/calc      # the bundled calculator
+parsec plugin list
+parsec plugin remove calc
+```
+
+A running daemon notices new, removed or disabled plugins by itself.
+
+### Writing one
+
+Two files are enough. `plugin.toml`:
+
+```toml
+name = "Calculator"
+id = "calc"                 # letters, digits, - and _; the folder name by default
+version = "0.1.0"
+description = "Evaluate arithmetic"
+keywords = ["="]            # trigger words; empty = sees every query
+exec = "main.py"            # relative to the plugin folder, made executable on install
+icon = "accessories-calculator-symbolic"   # theme name or image file in the folder
+
+[config]                    # optional, handed to the plugin at start
+precision = 10
+```
+
+and the executable, which reads lines from stdin and answers each one with
+exactly one line on stdout:
+
+| Parsec sends | Plugin replies |
+|---|---|
+| `{"type":"init","version":"0.1.0","config":{...}}` | `{"type":"ready"}` |
+| `{"type":"query","id":7,"text":"2+2","keyword":"="}` | `{"type":"results","id":7,"items":[...]}` |
+| `{"type":"activate","item":"...","data":...,"text":"..."}` | `{"type":"ok"}` |
+
+`text` is what the user typed after the keyword. An item is:
+
+```json
+{"title": "14", "subtitle": "2*(3+4) =", "icon": "optional", "id": "optional",
+ "score": 500,
+ "actions": [{"label": "Copy", "copy": "14"}]}
+```
+
+Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
+out of the clipboard history and cleared after 15 s), `run` an argv array,
+or `callback` with any JSON, which comes back to the plugin in an `activate`
+message when the user picks it. The first action runs on Enter, the others
+are reachable with Tab. Items with no actions are informational.
+
+Rules of the road: answer within three seconds or the query is dropped and
+the plugin restarted; three failures in a row disable it until Parsec restarts;
+write nothing else to stdout (stderr is fine, it goes to Parsec's log); flush
+after every line. `examples/plugins/calc/main.py` is a complete, commented
+example in about sixty lines of Python.
+
 ## Styling
 
 The look is a dark translucent panel independent of the GNOME theme. Colours
@@ -273,6 +342,7 @@ parsec               start the daemon, or toggle the window if it already runs
 parsec --background  start the daemon without showing the window (autostart uses this)
 parsec toggle        same as plain parsec; reads better in a keybinding
 parsec settings      open the settings window
+parsec plugin ...    list | install <zip|dir|git-url> | remove <id>
 parsec config        print the effective configuration and the file path
 parsec query <text>  run one search without a window and print the results
 ```
@@ -303,10 +373,11 @@ crates/parsec/src
 ├── app.rs           GApplication wiring, daemon lifetime, app actions, config watcher
 ├── brand.rs         name, logo, version
 ├── autostart.rs     XDG autostart entry
+├── plugins/         plugin packages: manifest, install, remove
 ├── config.rs        config file, templates, detection defaults
 ├── detect.rs        editor, terminal, project folder, database detection
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
-├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts, system
+├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts, plugin host, system
 └── ui/              launcher window, preferences window
 ```
 
