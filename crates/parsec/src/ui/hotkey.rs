@@ -66,6 +66,30 @@ pub fn label(accel: &str) -> String {
     }
 }
 
+/// Other GNOME custom shortcuts: (name, accelerator label). A combination
+/// listed here never reaches the capture dialog, GNOME grabs it first.
+pub fn taken() -> Vec<(String, String)> {
+    if !schema_exists(MEDIA_KEYS) || !schema_exists(BINDING_SCHEMA) {
+        return Vec::new();
+    }
+    let media = gio::Settings::new(MEDIA_KEYS);
+    media
+        .strv("custom-keybindings")
+        .iter()
+        .filter(|p| p.as_str() != PATH)
+        .filter_map(|p| {
+            let b = gio::Settings::with_path(BINDING_SCHEMA, p.as_str());
+            let accel = b.string("binding").to_string();
+            if accel.is_empty() {
+                return None;
+            }
+            let name = b.string("name").to_string();
+            let cmd = b.string("command").to_string();
+            Some((if name.is_empty() { cmd } else { name }, label(&accel)))
+        })
+        .collect()
+}
+
 pub fn set(accel: &str) -> bool {
     let Some(binding) = ensure_entry() else {
         return false;
@@ -81,8 +105,8 @@ pub fn capture(parent: &impl IsA<gtk::Window>, on_done: impl Fn(Option<String>) 
     let dialog = adw::Window::builder()
         .transient_for(parent)
         .modal(true)
-        .default_width(380)
-        .default_height(180)
+        .default_width(420)
+        .default_height(220)
         .title("Set hotkey")
         .build();
     let content = gtk::Box::builder()
@@ -104,6 +128,24 @@ pub fn capture(parent: &impl IsA<gtk::Window>, on_done: impl Fn(Option<String>) 
             .css_classes(["dim-label"])
             .build(),
     );
+    let taken = taken();
+    if !taken.is_empty() {
+        let list = taken
+            .iter()
+            .map(|(name, key)| format!("{key} ({name})"))
+            .collect::<Vec<_>>()
+            .join("  ·  ");
+        content.append(
+            &gtk::Label::builder()
+                .label(format!("Already used by other GNOME shortcuts:\n{list}"))
+                .justify(gtk::Justification::Center)
+                .wrap(true)
+                .max_width_chars(44)
+                .margin_top(10)
+                .css_classes(["dim-label", "caption"])
+                .build(),
+        );
+    }
     dialog.set_content(Some(&content));
 
     let on_done = std::rc::Rc::new(on_done);
