@@ -30,6 +30,64 @@ pub struct Config {
     pub verbs: Verbs,
     pub shortcuts: Vec<Shortcut>,
     pub plugins: Plugins,
+    pub files: Files,
+    pub appearance: Appearance,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Files {
+    /// Only results under these folders. Empty = anywhere.
+    pub roots: Vec<String>,
+    /// Folder names never shown.
+    pub exclude: Vec<String>,
+    /// Include hidden files and folders.
+    pub hidden: bool,
+    /// Use GNOME's Tracker index (fresh, limited to indexed folders).
+    pub tracker: bool,
+    /// Use plocate (everything, refreshed nightly).
+    pub plocate: bool,
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Self {
+            roots: vec!["~".into()],
+            exclude: [
+                "node_modules",
+                "target",
+                "__pycache__",
+                ".git",
+                "snap",
+                "venv",
+                ".venv",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+            hidden: false,
+            tracker: true,
+            plocate: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Appearance {
+    /// "system", "dark" or "light".
+    pub theme: String,
+    /// "system" (GNOME's accent on 47+, else the default violet) or a hex colour.
+    pub accent: String,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            theme: "dark".into(),
+            accent: "system".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -137,6 +195,10 @@ pub struct Verbs {
     pub prs: String,
     pub clipboard: String,
     pub keepass: String,
+    pub files: String,
+    pub ssh: String,
+    pub docker: String,
+    pub services: String,
 }
 
 impl Default for Clipboard {
@@ -158,6 +220,10 @@ impl Default for Verbs {
             prs: "pr".into(),
             clipboard: "cb".into(),
             keepass: "kp".into(),
+            files: "f".into(),
+            ssh: "ssh".into(),
+            docker: "dk".into(),
+            services: "svc".into(),
         }
     }
 }
@@ -209,6 +275,8 @@ impl Default for Config {
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),
             plugins: Plugins::default(),
+            files: Files::default(),
+            appearance: Appearance::default(),
         }
     }
 }
@@ -353,6 +421,29 @@ github = {v_github}
 prs = {v_prs}
 clipboard = {v_clip}
 keepass = {v_kp}
+files = {v_files}
+ssh = {v_ssh}
+docker = {v_docker}
+services = {v_services}
+
+[files]
+# Only show files under these folders ("~" allowed). Empty = anywhere.
+roots = {files_roots}
+# Folder names never shown.
+exclude = {files_exclude}
+# Include hidden files and folders.
+hidden = {files_hidden}
+# Sources: GNOME's Tracker index (fresh, indexed folders only) and plocate
+# (everything, refreshed nightly).
+tracker = {files_tracker}
+plocate = {files_plocate}
+
+[appearance]
+# "dark", "light" or "system" (follows the GNOME dark style preference).
+theme = {theme}
+# "system" uses GNOME's accent colour where available (GNOME 47+), otherwise
+# Parsec's violet. Or a hex colour like #ff7a59.
+accent = {accent}
 
 [plugins]
 # Installed plugins (see Settings › Plugins) that should stay off.
@@ -382,6 +473,17 @@ disabled = {plugins_disabled}
             kp_clear = self.keepass.clipboard_clear_secs,
             kp_skip = toml_array(&self.keepass.skip_groups),
             v_kp = toml_str(&self.verbs.keepass),
+            v_files = toml_str(&self.verbs.files),
+            v_ssh = toml_str(&self.verbs.ssh),
+            v_docker = toml_str(&self.verbs.docker),
+            v_services = toml_str(&self.verbs.services),
+            files_roots = toml_array(&self.files.roots),
+            files_exclude = toml_array(&self.files.exclude),
+            files_hidden = self.files.hidden,
+            files_tracker = self.files.tracker,
+            files_plocate = self.files.plocate,
+            theme = toml_str(&self.appearance.theme),
+            accent = toml_str(&self.appearance.accent),
             shortcuts = shortcuts_toml(&self.shortcuts),
             plugins_disabled = toml_array(&self.plugins.disabled),
         )
@@ -507,6 +609,8 @@ mod tests {
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),
             plugins: Plugins::default(),
+            files: Files::default(),
+            appearance: Appearance::default(),
         }
     }
 

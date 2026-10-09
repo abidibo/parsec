@@ -36,7 +36,7 @@ fn build(app: &adw::Application, cfg: SharedConfig) -> adw::PreferencesWindow {
         .default_height(720)
         .search_enabled(true)
         .build();
-    window.add(&launcher_page(&window));
+    window.add(&launcher_page(&window, cfg.clone()));
     window.add(&general_page(&window, cfg.clone()));
     window.add(&providers_page(&window, cfg.clone()));
     window.add(&crate::ui::shortcuts_page::page(&window, cfg.clone()));
@@ -261,6 +261,80 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
     ));
     page.add(&clipboard);
 
+    let files = adw::PreferencesGroup::builder()
+        .title("Files")
+        .description("Search by name through GNOME's Tracker index and plocate.")
+        .build();
+    files.add(&text_row(
+        "Only under",
+        "Comma separated folders, ~ allowed. Empty = anywhere.",
+        &cfg.borrow().files.roots.join(", "),
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let roots = text
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect();
+                edit(&cfg, |c| c.files.roots = roots);
+                true
+            }
+        ),
+    ));
+    files.add(&text_row(
+        "Excluded folder names",
+        "Comma separated",
+        &cfg.borrow().files.exclude.join(", "),
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let ex = text
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect();
+                edit(&cfg, |c| c.files.exclude = ex);
+                true
+            }
+        ),
+    ));
+    files.add(&switch_row(
+        "Show hidden files",
+        "",
+        cfg.borrow().files.hidden,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.files.hidden = on)
+        ),
+    ));
+    files.add(&switch_row(
+        "Use Tracker",
+        "GNOME's index: fresh within seconds, limited to Documents, Downloads, Desktop and media",
+        cfg.borrow().files.tracker,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.files.tracker = on)
+        ),
+    ));
+    files.add(&switch_row(
+        "Use plocate",
+        "Everything on disk, refreshed nightly by the system",
+        cfg.borrow().files.plocate,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.files.plocate = on)
+        ),
+    ));
+    page.add(&files);
+
     let keepass = adw::PreferencesGroup::builder()
         .title("KeePass")
         .description("Entries from a .kdbx database, unlocked with the master password typed in the launcher.")
@@ -384,7 +458,7 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
     page
 }
 
-fn launcher_page(window: &adw::PreferencesWindow) -> adw::PreferencesPage {
+fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::PreferencesPage {
     let page = adw::PreferencesPage::builder()
         .title("Launcher")
         .icon_name("input-keyboard-symbolic")
@@ -454,10 +528,53 @@ fn launcher_page(window: &adw::PreferencesWindow) -> adw::PreferencesPage {
 
     let look = adw::PreferencesGroup::builder()
         .title("Appearance")
-        .description(
-            "Colours and sizes come from a stylesheet that reloads live while Parsec runs.",
-        )
+        .description("Theme and accent, then a stylesheet for everything else, reloaded live.")
         .build();
+    let themes = gtk::StringList::new(&["Dark", "Light", "Follow system"]);
+    let theme_row = adw::ComboRow::builder()
+        .title("Theme")
+        .model(&themes)
+        .build();
+    theme_row.set_selected(match cfg.borrow().appearance.theme.as_str() {
+        "light" => 1,
+        "system" => 2,
+        _ => 0,
+    });
+    theme_row.connect_selected_notify(glib::clone!(
+        #[strong]
+        cfg,
+        move |r| {
+            let value = match r.selected() {
+                1 => "light",
+                2 => "system",
+                _ => "dark",
+            };
+            edit(&cfg, |c| c.appearance.theme = value.into());
+            crate::ui::theme::apply(&cfg);
+        }
+    ));
+    look.add(&theme_row);
+    look.add(&text_row(
+        "Accent colour",
+        "\"system\" follows GNOME's accent (47+), or a hex colour like #ff7a59",
+        &cfg.borrow().appearance.accent,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let t = text.trim().to_lowercase();
+                let ok = t == "system"
+                    || ((t.len() == 7 || t.len() == 4)
+                        && t.starts_with('#')
+                        && t[1..].chars().all(|c| c.is_ascii_hexdigit()));
+                if ok {
+                    edit(&cfg, |c| c.appearance.accent = t);
+                    crate::ui::theme::apply(&cfg);
+                }
+                ok
+            }
+        ),
+    ));
     let css_path = crate::ui::window::user_css_path();
     let edit_css = link_row("Edit stylesheet", "document-edit-symbolic");
     let shown = adw::ActionRow::builder()

@@ -40,11 +40,9 @@ Target: GNOME 46+, Wayland.
 - Shell extension also replaces clipboard polling on GNOME and enables paste
 - Image clipboard entries
 - Calculator, unit/currency conversion
-- Files via plocate with preview
 - Result actions on Tab (open folder, copy path, KDE Connect send, open in editor)
 - Verbs: `define`, `tz`, `color`, `uuid`, `pw`, `b64`, `json`
 - Emoji / Unicode picker with recents
-- SSH hosts, Docker containers, systemd units as targets with actions
 - Browser bookmarks and history
 - Opt-in natural-language actions via a local model or Claude, behind a prefix
 
@@ -73,6 +71,10 @@ Target: GNOME 46+, Wayland.
   folder or git (settings page and `parsec plugin`), enable/disable in config,
   host rescans on directory change. Sample: examples/plugins/calc (Python).
   This closes the "external plugins" half of the extensibility decision.
+
+- 2026-10-09: files (Tracker + plocate, merged, fuzzy on name, recency
+  boost), SSH hosts, Docker containers, systemd services; light theme and
+  GNOME accent sync (47+) with a theme CSS provider between base and user.
 
 ## Non-negotiables
 

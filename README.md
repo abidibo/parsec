@@ -35,6 +35,8 @@ Runtime:
 | GTK 4.14+, libadwaita 1.5+ | the UI, already on any GNOME 46 system | yes |
 | `wl-clipboard` | copying results and clipboard history | yes |
 | `xclip` | clipboard history on GNOME 46 and 47 (see [below](#clipboard-on-gnome-46-and-47)) | recommended |
+| `plocate` | files anywhere on disk; Tracker alone covers Documents, Downloads, Desktop and media | recommended |
+| `docker`, `systemctl` | the `dk` and `svc` verbs | optional |
 | `gh` (GitHub CLI), logged in | the `gh` and `pr` verbs | optional |
 
 Build:
@@ -50,7 +52,7 @@ plus a Rust toolchain, 1.82 or newer, from <https://rustup.rs>.
 Ubuntu 24.04 example, everything in one go:
 
 ```sh
-sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev wl-clipboard xclip gh
+sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev wl-clipboard xclip plocate gh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
@@ -118,6 +120,10 @@ narrows the search to one of them.
 | `kp name` | KeePass entries, after unlocking |
 | `g query`, `w query` | custom shortcuts: Google and Wikipedia by default, add your own |
 | `= 2*(3+4)` | the calculator plugin, once installed |
+| `f name` | files by name, through GNOME's Tracker index and plocate |
+| `ssh host` | hosts from `~/.ssh/config`; Enter connects in your terminal |
+| `dk name` | Docker containers: shell, logs, start, stop, restart |
+| `svc name` | systemd services, user and system: status, logs, restart |
 | `parsec` | Parsec's own entries: settings, quit |
 
 Keys:
@@ -154,6 +160,29 @@ clipboard once a second through `xclip` and XWayland, which the compositor
 keeps in sync with the Wayland clipboard. Install `xclip` or history stays off,
 with a line in the log saying so. On GNOME 48+, sway or Hyprland it is
 event-driven and needs nothing extra.
+
+### Files
+
+`f name` searches file names. Two sources are merged: GNOME's Tracker index,
+which follows Documents, Downloads, Desktop and media within seconds, and
+plocate, which covers the whole disk but refreshes nightly (`sudo updatedb`
+forces it). Every word you type must appear; the result is ranked fuzzily on
+the file name with a boost for recently modified files. Actions: open, show
+in folder, open a terminal there, open in editor, copy path. Settings ›
+Providers limits the search to folders, excludes folder names, and toggles
+hidden files and each source. Files are also suggested when a plain query
+matches nothing else.
+
+### Infrastructure
+
+- `ssh host`: aliases from `~/.ssh/config` with their user and host name.
+  Enter opens your terminal running `ssh host`; an unknown name connects
+  to it anyway.
+- `dk name`: Docker containers, running ones first. Shell opens a terminal
+  inside the container, Logs follows them, then restart, stop or start.
+- `svc name`: systemd services, user and system. Status and Logs open in
+  the terminal; restart, stop and start run directly for user units and
+  through `sudo` in a terminal for system units.
 
 ### Custom shortcuts
 
@@ -232,6 +261,21 @@ github = "gh"
 prs = "pr"
 clipboard = "cb"
 keepass = "kp"
+files = "f"
+ssh = "ssh"
+docker = "dk"
+services = "svc"
+
+[files]
+roots = ["~"]
+exclude = ["node_modules", "target", "__pycache__", ".git", "snap", "venv", ".venv"]
+hidden = false
+tracker = true
+plocate = true
+
+[appearance]
+theme = "dark"         # dark | light | system
+accent = "system"      # system | "#rrggbb"
 
 [[shortcuts]]
 name = "Google"
@@ -323,8 +367,10 @@ example in about sixty lines of Python.
 
 ## Styling
 
-The look is a dark translucent panel independent of the GNOME theme. Colours
-and sizes come from CSS, and `~/.config/parsec/style.css` overrides it live:
+Settings › Launcher › Appearance picks the theme, dark, light, or following
+GNOME's dark-style preference, and the accent: GNOME's own accent colour on
+GNOME 47 and later, Parsec's violet otherwise, or any hex colour. Everything
+else is CSS, and `~/.config/parsec/style.css` overrides it live:
 save the file and the running launcher repaints. Settings › Launcher › *Edit
 stylesheet* creates the file with a reference of every variable and selector.
 For example:
@@ -377,7 +423,8 @@ crates/parsec/src
 ├── config.rs        config file, templates, detection defaults
 ├── detect.rs        editor, terminal, project folder, database detection
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
-├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts, plugin host, system
+├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
+│                    files, infra (ssh, docker, services), plugin host, system
 └── ui/              launcher window, preferences window
 ```
 

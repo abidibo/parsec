@@ -33,7 +33,9 @@ pub const USER_CSS_TEMPLATE: &str = r#"/* Parsec user stylesheet. Reloaded live 
      parsec_row_selected  selected row background
      parsec_row_hover
      tile_apps tile_projects tile_shell tile_github tile_clipboard
-     tile_keepass tile_shortcuts tile_plugins tile_parsec   icon tile tints
+     tile_keepass tile_shortcuts tile_plugins tile_files tile_ssh
+     tile_docker tile_services tile_parsec           icon tile tints
+   Theme (dark/light) and accent are chosen in Settings › Launcher.
 
    Selectors:
      window.parsec  .parsec-panel  .parsec-search  .parsec-entry  .parsec-chip
@@ -65,7 +67,16 @@ const CSS: &str = r#"
 @define-color tile_keepass #ffb454;
 @define-color tile_shortcuts #ff7a9a;
 @define-color tile_plugins #6ad4ff;
+@define-color tile_files #f0c674;
+@define-color tile_ssh #7ee0c8;
+@define-color tile_docker #4aa8ff;
+@define-color tile_services #ff9f7a;
 @define-color tile_parsec #8b7cff;
+@define-color parsec_key_bg rgba(255, 255, 255, 0.10);
+@define-color parsec_chip_bg rgba(255, 255, 255, 0.06);
+@define-color parsec_shadow rgba(0, 0, 0, 0.55);
+@define-color parsec_shadow_soft rgba(0, 0, 0, 0.35);
+@define-color parsec_inner_highlight rgba(255, 255, 255, 0.05);
 
 window.parsec {
     background-color: transparent;
@@ -76,9 +87,9 @@ window.parsec {
     border-radius: 18px;
     color: @parsec_fg;
     box-shadow:
-        0 24px 60px rgba(0, 0, 0, 0.55),
-        0 2px 8px rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        0 24px 60px @parsec_shadow,
+        0 2px 8px @parsec_shadow_soft,
+        inset 0 1px 0 @parsec_inner_highlight;
 }
 
 /* search bar */
@@ -168,6 +179,10 @@ window.parsec {
 .parsec-tile.tile-shortcuts { background-color: alpha(@tile_shortcuts, 0.16); color: @tile_shortcuts; }
 .parsec-tile.tile-plugins   { background-color: alpha(@tile_plugins, 0.16);   color: @tile_plugins; }
 .parsec-tile.tile-system    { background-color: alpha(@tile_parsec, 0.16);    color: @tile_parsec; }
+.parsec-tile.tile-files     { background-color: alpha(@tile_files, 0.16);     color: @tile_files; }
+.parsec-tile.tile-ssh       { background-color: alpha(@tile_ssh, 0.16);       color: @tile_ssh; }
+.parsec-tile.tile-docker    { background-color: alpha(@tile_docker, 0.16);    color: @tile_docker; }
+.parsec-tile.tile-services  { background-color: alpha(@tile_services, 0.16);  color: @tile_services; }
 .parsec-title {
     font-size: 15px;
     font-weight: 500;
@@ -190,7 +205,7 @@ window.parsec {
     font-family: monospace;
     font-size: 9px;
     color: @parsec_dim;
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: @parsec_key_bg;
     border-radius: 4px;
     padding: 1px 4px;
     margin-left: 8px;
@@ -216,7 +231,7 @@ window.parsec {
     margin-bottom: 14px;
 }
 .parsec-verb-chip {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: @parsec_chip_bg;
     border: 1px solid @parsec_border;
     border-radius: 999px;
     padding: 4px 12px;
@@ -244,7 +259,7 @@ window.parsec {
     font-family: monospace;
     font-size: 10px;
     color: @parsec_fg;
-    background-color: rgba(255, 255, 255, 0.10);
+    background-color: @parsec_key_bg;
     border-radius: 4px;
     padding: 1px 5px;
     margin-right: 5px;

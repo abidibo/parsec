@@ -30,13 +30,14 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
         window,
         move |app| {
             tracing::info!("starting daemon");
-            // The panel is dark by design; keep GTK's text colours consistent.
-            adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+
             let cfg: providers::SharedConfig = Rc::new(RefCell::new(Config::load()));
             watch_config(cfg.clone());
             register_actions(app, cfg.clone());
-            let engine = Rc::new(Engine::new(providers::all(cfg, true)));
+            let engine = Rc::new(Engine::new(providers::all(cfg.clone(), true)));
             *window.borrow_mut() = Some(LauncherWindow::new(app, engine));
+            crate::ui::theme::apply(&cfg);
+            crate::ui::theme::watch(cfg);
             // Stay alive with the window hidden. The guard releases on drop,
             // and we want the hold to last as long as the process does.
             std::mem::forget(app.hold());
@@ -95,6 +96,7 @@ fn watch_config(cfg: providers::SharedConfig) {
                 if matches!(event, E::ChangesDoneHint | E::Created | E::Renamed) {
                     tracing::info!("config changed, reloading");
                     *cfg.borrow_mut() = Config::load();
+                    crate::ui::theme::apply(&cfg);
                 }
             });
             std::mem::forget(monitor);

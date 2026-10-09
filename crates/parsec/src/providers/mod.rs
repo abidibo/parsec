@@ -3,7 +3,9 @@
 
 pub mod apps;
 pub mod clipboard;
+pub mod files;
 pub mod github;
+pub mod infra;
 pub mod keepass;
 pub mod plugin_host;
 pub mod projects;
@@ -27,6 +29,10 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(clipboard::ClipboardProvider::new(cfg.clone(), daemon)),
         Box::new(keepass::KeepassProvider::new(cfg.clone())),
         Box::new(shortcuts::ShortcutsProvider::new(cfg.clone())),
+        Box::new(files::FilesProvider::new(cfg.clone())),
+        Box::new(infra::SshProvider::new(cfg.clone())),
+        Box::new(infra::DockerProvider::new(cfg.clone())),
+        Box::new(infra::ServicesProvider::new(cfg.clone())),
         Box::new(plugin_host::PluginHost::new(cfg)),
         Box::new(system::SystemProvider),
     ]
