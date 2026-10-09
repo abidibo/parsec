@@ -7,6 +7,7 @@ pub mod github;
 pub mod keepass;
 pub mod projects;
 pub mod shell;
+pub mod shortcuts;
 pub mod system;
 
 pub use crate::config::SharedConfig;
@@ -23,7 +24,8 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(github::GithubRepos::new(cfg.clone())),
         Box::new(github::GithubPrs::new(cfg.clone())),
         Box::new(clipboard::ClipboardProvider::new(cfg.clone(), daemon)),
-        Box::new(keepass::KeepassProvider::new(cfg)),
+        Box::new(keepass::KeepassProvider::new(cfg.clone())),
+        Box::new(shortcuts::ShortcutsProvider::new(cfg)),
         Box::new(system::SystemProvider),
     ]
 }

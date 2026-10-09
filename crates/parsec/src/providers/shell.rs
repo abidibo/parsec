@@ -32,8 +32,8 @@ impl Provider for ShellProvider {
         "shell"
     }
 
-    fn prefix(&self) -> Option<String> {
-        Some(self.cfg.borrow().verbs.shell.clone())
+    fn prefixes(&self) -> Vec<String> {
+        vec![self.cfg.borrow().verbs.shell.clone()]
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {

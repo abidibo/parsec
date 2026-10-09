@@ -10,7 +10,7 @@
 //! separator when there is none).
 
 use crate::detect;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -18,7 +18,7 @@ use std::rc::Rc;
 /// Shared, reloadable configuration handed to providers and the settings UI.
 pub type SharedConfig = Rc<RefCell<Config>>;
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub projects: Projects,
@@ -28,6 +28,54 @@ pub struct Config {
     pub clipboard: Clipboard,
     pub keepass: Keepass,
     pub verbs: Verbs,
+    pub shortcuts: Vec<Shortcut>,
+}
+
+/// A user keyword: a search URL with `{query}` (or `%s`), or a script that
+/// gets the text as `$1`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Shortcut {
+    pub name: String,
+    pub keyword: String,
+    pub command: String,
+    /// Icon name from the theme, or an image file path. Empty = automatic.
+    pub icon: String,
+    /// Suggest this shortcut when a query matches nothing else.
+    pub default_search: bool,
+    /// Enter on the bare keyword runs it with an empty query.
+    pub run_without_args: bool,
+}
+
+impl Default for Shortcut {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            keyword: String::new(),
+            command: String::new(),
+            icon: String::new(),
+            default_search: false,
+            run_without_args: false,
+        }
+    }
+}
+
+pub fn default_shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut {
+            name: "Google".into(),
+            keyword: "g".into(),
+            command: "https://www.google.com/search?q={query}".into(),
+            default_search: true,
+            ..Default::default()
+        },
+        Shortcut {
+            name: "Wikipedia".into(),
+            keyword: "w".into(),
+            command: "https://en.wikipedia.org/wiki/Special:Search?search={query}".into(),
+            ..Default::default()
+        },
+    ]
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -139,6 +187,21 @@ pub struct Github {
     pub owners: Vec<String>,
     /// How long to keep `gh` results before asking again.
     pub cache_secs: u64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            projects: Projects::default(),
+            editor: Editor::default(),
+            terminal: Terminal::default(),
+            github: Github::default(),
+            clipboard: Clipboard::default(),
+            keepass: Keepass::default(),
+            verbs: Verbs::default(),
+            shortcuts: default_shortcuts(),
+        }
+    }
 }
 
 impl Default for Projects {
@@ -281,7 +344,10 @@ github = {v_github}
 prs = {v_prs}
 clipboard = {v_clip}
 keepass = {v_kp}
-"#,
+
+# Custom keywords. `command` is a URL with {{query}} (or %s), or a script
+# that receives the text as $1. Edit them in Settings › Shortcuts.
+{shortcuts}"#,
             roots = toml_array(&self.projects.roots),
             depth = self.projects.max_depth,
             editor = toml_array(&self.editor.command),
@@ -303,6 +369,7 @@ keepass = {v_kp}
             kp_clear = self.keepass.clipboard_clear_secs,
             kp_skip = toml_array(&self.keepass.skip_groups),
             v_kp = toml_str(&self.verbs.keepass),
+            shortcuts = shortcuts_toml(&self.shortcuts),
         )
     }
 
@@ -338,6 +405,14 @@ keepass = {v_kp}
         }
         out
     }
+}
+
+fn shortcuts_toml(shortcuts: &[Shortcut]) -> String {
+    #[derive(Serialize)]
+    struct Wrap<'a> {
+        shortcuts: &'a [Shortcut],
+    }
+    toml::to_string(&Wrap { shortcuts }).unwrap_or_default()
 }
 
 fn toml_str(s: &str) -> String {
@@ -416,6 +491,7 @@ mod tests {
             clipboard: Clipboard::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),
+            shortcuts: default_shortcuts(),
         }
     }
 
@@ -484,5 +560,6 @@ mod tests {
         assert_eq!(parsed.terminal.command, c.terminal.command);
         assert_eq!(parsed.verbs.shell, "$");
         assert_eq!(parsed.clipboard.max_items, 200);
+        assert_eq!(parsed.shortcuts, default_shortcuts());
     }
 }

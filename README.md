@@ -115,6 +115,7 @@ narrows the search to one of them.
 | `pr` | your open pull requests |
 | `cb text` | clipboard history |
 | `kp name` | KeePass entries, after unlocking |
+| `g query`, `w query` | custom shortcuts: Google and Wikipedia by default, add your own |
 | `parsec` | Parsec's own entries: settings, quit |
 
 Keys:
@@ -151,6 +152,28 @@ clipboard once a second through `xclip` and XWayland, which the compositor
 keeps in sync with the Wayland clipboard. Install `xclip` or history stays off,
 with a line in the log saying so. On GNOME 48+, sway or Hyprland it is
 event-driven and needs nothing extra.
+
+### Custom shortcuts
+
+A keyword that opens a URL or runs a script with what you typed, like
+ulauncher's shortcuts. Settings › Shortcuts has the editor: name, keyword,
+icon, the URL or script, and two switches:
+
+- *Default search*: suggest it when a query matches nothing else, so a typo
+  or an unknown word offers "Search Google for …".
+- *Run without arguments*: Enter on the bare keyword runs it with an empty
+  query. Off, the bare keyword asks what to search.
+
+In a URL, `{query}` or `%s` is replaced by the text, percent-encoded. Anything
+that isn't a URL runs as a shell script with the text as `$1` and
+`$PARSEC_QUERY`, and a literal `{query}` replaced by the quoted text:
+
+```sh
+# "tr <text>": translate to Italian in a notification
+notify-send "$(trans -b :it "$1")"
+```
+
+Shortcuts live in `[[shortcuts]]` tables in the config file.
 
 ### KeePass
 
@@ -207,6 +230,14 @@ github = "gh"
 prs = "pr"
 clipboard = "cb"
 keepass = "kp"
+
+[[shortcuts]]
+name = "Google"
+keyword = "g"
+command = "https://www.google.com/search?q={query}"
+icon = ""
+default_search = true
+run_without_args = false
 ```
 
 Command templates are argv arrays. Placeholders: `{path}` the project folder,
@@ -275,7 +306,7 @@ crates/parsec/src
 ├── config.rs        config file, templates, detection defaults
 ├── detect.rs        editor, terminal, project folder, database detection
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
-├── providers/       apps, projects, shell, github, clipboard, keepass, system
+├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts, system
 └── ui/              launcher window, preferences window
 ```
 

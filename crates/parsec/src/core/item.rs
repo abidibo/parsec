@@ -29,6 +29,8 @@ pub enum Icon {
     Named(String),
     /// Anything GIO resolved for us (desktop app icons, file icons).
     GIcon(gio::Icon),
+    /// An image file (shortcut and plugin icons).
+    Path(std::path::PathBuf),
 }
 
 #[derive(Debug, Clone)]

@@ -6,14 +6,17 @@ use nucleo_matcher::pattern::Pattern;
 /// stripped, so a provider never needs to know how it was invoked.
 pub struct Query<'a> {
     pub text: &'a str,
+    /// The keyword that routed the query here, for providers with several.
+    pub verb: Option<&'a str>,
     pub matcher: &'a Matcher,
     pattern: Pattern,
 }
 
 impl<'a> Query<'a> {
-    pub fn new(text: &'a str, matcher: &'a Matcher) -> Self {
+    pub fn new(text: &'a str, verb: Option<&'a str>, matcher: &'a Matcher) -> Self {
         Self {
             text,
+            verb,
             matcher,
             pattern: matcher.pattern(text),
         }
@@ -45,14 +48,20 @@ pub trait Provider {
     /// Short stable identifier, also used as the item id namespace.
     fn id(&self) -> &'static str;
 
-    /// Optional trigger word. `Some("$")` means the provider only runs when
-    /// the query starts with `$`, and it receives the remainder.
-    /// `None` means it runs on every query. Owned so it can come from config.
-    fn prefix(&self) -> Option<String> {
-        None
+    /// Trigger words. `["$"]` means the provider only runs when the query
+    /// starts with `$`, and it receives the remainder with `q.verb == "$"`.
+    /// Empty means it runs on every query. Owned so they can come from config.
+    fn prefixes(&self) -> Vec<String> {
+        Vec::new()
     }
 
     /// Produce items for this query. An empty query means "the launcher just
     /// opened": return cheap candidates (the engine keeps those with frecency).
     async fn query(&self, q: &Query<'_>) -> Vec<Item>;
+
+    /// Suggestions for a query nothing matched (e.g. "search the web for…").
+    /// Called with the full text, no verb.
+    async fn fallback(&self, _q: &Query<'_>) -> Vec<Item> {
+        Vec::new()
+    }
 }

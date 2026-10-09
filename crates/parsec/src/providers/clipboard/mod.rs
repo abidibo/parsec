@@ -88,8 +88,8 @@ impl Provider for ClipboardProvider {
         "clipboard"
     }
 
-    fn prefix(&self) -> Option<String> {
-        Some(self.cfg.borrow().verbs.clipboard.clone())
+    fn prefixes(&self) -> Vec<String> {
+        vec![self.cfg.borrow().verbs.clipboard.clone()]
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {

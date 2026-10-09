@@ -258,8 +258,8 @@ impl Provider for KeepassProvider {
         "keepass"
     }
 
-    fn prefix(&self) -> Option<String> {
-        Some(self.cfg.borrow().verbs.keepass.clone())
+    fn prefixes(&self) -> Vec<String> {
+        vec![self.cfg.borrow().verbs.keepass.clone()]
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {

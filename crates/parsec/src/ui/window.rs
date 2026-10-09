@@ -647,6 +647,7 @@ fn row_for(item: &Item) -> gtk::ListBoxRow {
         Icon::None => image.set_icon_name(Some("application-x-executable")),
         Icon::Named(name) => image.set_icon_name(Some(name)),
         Icon::GIcon(gicon) => image.set_from_gicon(gicon),
+        Icon::Path(path) => image.set_from_file(Some(path)),
     }
 
     let title = gtk::Label::builder()

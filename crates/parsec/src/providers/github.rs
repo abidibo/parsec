@@ -132,8 +132,8 @@ impl Provider for GithubRepos {
         "github"
     }
 
-    fn prefix(&self) -> Option<String> {
-        Some(self.cfg.borrow().verbs.github.clone())
+    fn prefixes(&self) -> Vec<String> {
+        vec![self.cfg.borrow().verbs.github.clone()]
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
@@ -219,8 +219,8 @@ impl Provider for GithubPrs {
         "github-prs"
     }
 
-    fn prefix(&self) -> Option<String> {
-        Some(self.cfg.borrow().verbs.prs.clone())
+    fn prefixes(&self) -> Vec<String> {
+        vec![self.cfg.borrow().verbs.prs.clone()]
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {

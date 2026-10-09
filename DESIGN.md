@@ -64,6 +64,10 @@ Target: GNOME 46+, Wayland.
   (kept out of history, auto-cleared), a secrets registry the clipboard watcher
   consults. Auto-lock, no disk writes, no logging of entry data.
 
+- 2026-10-09: custom shortcuts (ulauncher-style keywords: URL or script,
+  default search, run without args) with an editor in settings. Providers can
+  own several keywords and offer fallback suggestions when nothing matched.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

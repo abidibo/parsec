@@ -31,28 +31,39 @@ impl Engine {
         let mut items: Vec<Item> = Vec::new();
 
         let verb_active = self.providers.iter().any(|o| {
-            o.prefix()
-                .is_some_and(|pre| strip_verb(raw, &pre).is_some())
+            o.prefixes()
+                .iter()
+                .any(|pre| strip_verb(raw, pre).is_some())
         });
 
         for p in &self.providers {
-            let text = match p.prefix() {
-                Some(prefix) => match strip_verb(raw, &prefix) {
-                    Some(rest) => rest,
+            let prefixes = p.prefixes();
+            let (text, verb) = if prefixes.is_empty() {
+                // A prefixed query is for that provider alone.
+                if verb_active {
+                    continue;
+                }
+                (raw, None)
+            } else {
+                match prefixes
+                    .iter()
+                    .find_map(|pre| strip_verb(raw, pre).map(|rest| (rest, pre.as_str())))
+                {
+                    Some((rest, verb)) => (rest, Some(verb)),
                     None => continue,
-                },
-                None => {
-                    // A prefixed query is for that provider alone.
-                    if verb_active {
-                        continue;
-                    }
-                    raw
                 }
             };
-            let q = Query::new(text, &self.matcher);
+            let q = Query::new(text, verb, &self.matcher);
             let found = p.query(&q).await;
             tracing::trace!(provider = p.id(), count = found.len(), "provider results");
             items.extend(found);
+        }
+
+        if items.is_empty() && !raw.is_empty() && !verb_active {
+            let q = Query::new(raw, None, &self.matcher);
+            for p in &self.providers {
+                items.extend(p.fallback(&q).await);
+            }
         }
 
         let frec = self.frecency.borrow();
@@ -157,6 +168,11 @@ fn copy_text(text: &str) -> Result<()> {
     let display = gtk::gdk::Display::default().context("no display")?;
     display.clipboard().set_text(text);
     Ok(())
+}
+
+/// Run an action outside the normal pick flow (prompt submissions).
+pub fn run_detached(kind: &ActionKind) -> Result<()> {
+    run(kind)
 }
 
 fn run(kind: &ActionKind) -> Result<()> {
