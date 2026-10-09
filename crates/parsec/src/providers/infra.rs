@@ -3,12 +3,13 @@
 //! caches briefly, and offers the obvious actions in your terminal.
 
 use super::SharedConfig;
-use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Icon, Item, Prompt, Provider, Query};
 use async_trait::async_trait;
 use gtk::gio;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::process::Command;
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 fn home() -> String {
@@ -19,6 +20,64 @@ fn home() -> String {
 
 fn argv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| s.to_string()).collect()
+}
+
+fn shell() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+}
+
+/// Run `command` in the terminal and drop into a shell afterwards, so a
+/// connection that fails or ends leaves its output on screen.
+fn in_terminal_then_shell(cfg: &crate::config::Config, command: &str) -> Vec<String> {
+    let sh = shell();
+    cfg.terminal_command(
+        &home(),
+        &[sh.clone(), "-ic".into(), format!("{command}; exec {sh}")],
+    )
+}
+
+fn ssh_actions(cfg: &crate::config::Config, target: &str, verb: &str) -> Vec<Action> {
+    let quoted = shlex::try_quote(target)
+        .map(|q| q.into_owned())
+        .unwrap_or_default();
+    let cfg_user = cfg.clone();
+    let target_user = target.to_string();
+    vec![
+        Action {
+            label: "Connect".into(),
+            kind: ActionKind::Command(in_terminal_then_shell(cfg, &format!("ssh {quoted}"))),
+        },
+        Action {
+            label: "Connect as…".into(),
+            kind: ActionKind::Prompt(Prompt {
+                title: format!("User for {target}"),
+                secret: false,
+                restore: format!("{verb} {target}"),
+                submit: Rc::new(move |user: String| {
+                    let user = user.trim().to_string();
+                    let spec = if user.is_empty() {
+                        target_user.clone()
+                    } else {
+                        format!("{user}@{target_user}")
+                    };
+                    let quoted = shlex::try_quote(&spec)
+                        .map(|q| q.into_owned())
+                        .unwrap_or_default();
+                    let kind = ActionKind::Command(in_terminal_then_shell(
+                        &cfg_user,
+                        &format!("ssh {quoted}"),
+                    ));
+                    Box::pin(async move {
+                        crate::core::engine::run_detached(&kind).map_err(|e| e.to_string())
+                    })
+                }),
+            }),
+        },
+        Action {
+            label: "Copy ssh command".into(),
+            kind: ActionKind::CopyText(format!("ssh {target}")),
+        },
+    ]
 }
 
 // ------------------------------------------------------------------ ssh
@@ -117,6 +176,7 @@ impl Provider for SshProvider {
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         self.refresh();
         let cfg = self.cfg.borrow();
+        let verb = cfg.verbs.ssh.clone();
         let hosts = self.hosts.borrow();
         let mut items: Vec<Item> = hosts
             .iter()
@@ -137,18 +197,7 @@ impl Provider for SshProvider {
                     subtitle: (!target.is_empty()).then_some(target.clone()),
                     icon: Icon::Named("network-server-symbolic".into()),
                     score,
-                    actions: vec![
-                        Action {
-                            label: "Connect".into(),
-                            kind: ActionKind::Command(
-                                cfg.terminal_command(&home(), &argv(&["ssh", &h.alias])),
-                            ),
-                        },
-                        Action {
-                            label: "Copy ssh command".into(),
-                            kind: ActionKind::CopyText(format!("ssh {}", h.alias)),
-                        },
-                    ],
+                    actions: ssh_actions(&cfg, &h.alias, &verb),
                 })
             })
             .collect();
@@ -161,12 +210,7 @@ impl Provider for SshProvider {
                 subtitle: Some("Not in ~/.ssh/config".into()),
                 icon: Icon::Named("network-server-symbolic".into()),
                 score: 1,
-                actions: vec![Action {
-                    label: "Connect".into(),
-                    kind: ActionKind::Command(
-                        cfg.terminal_command(&home(), &argv(&["ssh", &target])),
-                    ),
-                }],
+                actions: ssh_actions(&cfg, &target, &verb),
             });
         }
         items
