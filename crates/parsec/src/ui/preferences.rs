@@ -20,7 +20,9 @@ pub fn open(app: &adw::Application, cfg: SharedConfig) {
         return;
     }
     let window = build(app, cfg);
-    window.connect_close_request(|_| {
+    window.connect_close_request(|w| {
+        // Drop focus so a text row being edited commits through its focus-leave.
+        gtk::prelude::GtkWindowExt::set_focus(w, None::<&gtk::Widget>);
         OPEN.with(|o| *o.borrow_mut() = None);
         glib::Propagation::Proceed
     });
@@ -783,7 +785,9 @@ fn path_row(
     row
 }
 
-/// Free text with an apply button. `on_apply` returns false to flag invalid input.
+/// Free text with an apply button. Also commits when focus leaves the row, so
+/// an edit isn't lost by clicking elsewhere or closing the window. `on_apply`
+/// returns false to flag invalid input.
 fn text_row(
     title: &str,
     subtitle: &str,
@@ -798,13 +802,31 @@ fn text_row(
     if !subtitle.is_empty() {
         row.set_tooltip_text(Some(subtitle));
     }
-    row.connect_apply(move |r| {
-        if on_apply(r.text().as_str()) {
+    // Last committed text, so leaving an untouched row doesn't save.
+    let committed = Rc::new(RefCell::new(value.to_string()));
+    let commit = Rc::new(move |r: &adw::EntryRow| {
+        let text = r.text();
+        if text.as_str() == committed.borrow().as_str() {
             r.remove_css_class("error");
+        } else if on_apply(text.as_str()) {
+            r.remove_css_class("error");
+            *committed.borrow_mut() = text.to_string();
         } else {
             r.add_css_class("error");
         }
     });
+    row.connect_apply(glib::clone!(
+        #[strong]
+        commit,
+        move |r| commit(r)
+    ));
+    let focus = gtk::EventControllerFocus::new();
+    focus.connect_leave(glib::clone!(
+        #[weak]
+        row,
+        move |_| commit(&row)
+    ));
+    row.add_controller(focus);
     row
 }
 
