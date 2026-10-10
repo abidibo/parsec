@@ -1,0 +1,10 @@
+{
+  "uuid": "parsec@abidibo.org",
+  "name": "Parsec",
+  "description": "Lets the Parsec launcher switch windows, paste into the focused window and follow the clipboard. Does nothing on its own.",
+  "version": 1,
+  "version-name": "0.1.0",
+  "shell-version": ["45", "46", "47", "48", "49"],
+  "url": "https://github.com/abidibo/parsec",
+  "session-modes": ["user"]
+}

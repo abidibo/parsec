@@ -33,6 +33,9 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
 
             let cfg: providers::SharedConfig = Rc::new(RefCell::new(Config::load()));
             watch_config(cfg.clone());
+            let bridge = crate::gnome_shell::bridge();
+            bridge.set_enabled(cfg.borrow().shell.extension);
+            glib::spawn_future_local(async move { bridge.connect().await });
             register_actions(app, cfg.clone());
             let engine = Rc::new(Engine::new(providers::all(cfg.clone(), true)));
             *window.borrow_mut() = Some(LauncherWindow::new(app, engine));
@@ -97,6 +100,7 @@ fn watch_config(cfg: providers::SharedConfig) {
                     tracing::info!("config changed, reloading");
                     *cfg.borrow_mut() = Config::load();
                     crate::ui::theme::apply(&cfg);
+                    crate::gnome_shell::bridge().set_enabled(cfg.borrow().shell.extension);
                 }
             });
             std::mem::forget(monitor);

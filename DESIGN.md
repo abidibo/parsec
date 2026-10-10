@@ -36,8 +36,7 @@ Target: GNOME 46+, Wayland.
 
 ## Backlog (v2+)
 
-- Window switcher merged into search (needs Shell extension)
-- Shell extension also replaces clipboard polling on GNOME and enables paste
+- Shell extension: own the hotkey, paste KeePass passwords, window thumbnails
 - Image clipboard entries
 - Calculator, unit/currency conversion
 - Result actions on Tab (open folder, copy path, KDE Connect send, open in editor)
@@ -75,6 +74,16 @@ Target: GNOME 46+, Wayland.
 - 2026-10-09: files (Tracker + plocate, merged, fuzzy on name, recency
   boost), SSH hosts, Docker containers, systemd services; light theme and
   GNOME accent sync (47+) with a theme CSS provider between base and user.
+
+- 2026-10-10: GNOME Shell extension, optional. `data/extension` is a JS
+  extension exporting `org.abidibo.Parsec.Shell` (ListWindows,
+  ActivateWindow, CloseWindow, Paste, GetClipboard, ClipboardChanged);
+  `gnome_shell.rs` is the client, a per-process singleton with an
+  `is_active()` every caller checks. New: windows provider (mixed into plain
+  queries, `win` verb), `Paste` action kind (clipboard entries, plugins),
+  clipboard watcher driven by the extension when present. The extension is
+  embedded in the binary and written out by `parsec extension install` or the
+  settings row; a logout loads it. Without it nothing changes.
 
 ## Non-negotiables
 

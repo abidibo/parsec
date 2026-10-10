@@ -12,6 +12,7 @@ pub mod projects;
 pub mod shell;
 pub mod shortcuts;
 pub mod system;
+pub mod windows;
 
 pub use crate::config::SharedConfig;
 use crate::core::Provider;
@@ -22,6 +23,7 @@ use crate::core::Provider;
 pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
     vec![
         Box::new(apps::AppsProvider::new()),
+        Box::new(windows::WindowsProvider::new(cfg.clone())),
         Box::new(projects::ProjectsProvider::new(cfg.clone())),
         Box::new(shell::ShellProvider::new(cfg.clone())),
         Box::new(github::GithubRepos::new(cfg.clone())),

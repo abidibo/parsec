@@ -57,6 +57,9 @@ pub enum ActionKind {
     /// argv, spawned detached.
     Command(Vec<String>),
     CopyText(String),
+    /// Type the text into the window that had focus, through the Shell
+    /// extension; falls back to `CopyText` without it.
+    Paste(String),
     OpenUri(String),
     /// Provider-side effect (pin, delete, ...). Runs on the main thread.
     Callback(Rc<dyn Fn() -> anyhow::Result<()>>),
@@ -97,6 +100,7 @@ impl std::fmt::Debug for ActionKind {
             Self::LaunchApp(info) => write!(f, "LaunchApp({:?})", info.id()),
             Self::Command(argv) => write!(f, "Command({argv:?})"),
             Self::CopyText(t) => write!(f, "CopyText({} bytes)", t.len()),
+            Self::Paste(t) => write!(f, "Paste({} bytes)", t.len()),
             Self::OpenUri(u) => write!(f, "OpenUri({u})"),
             Self::Callback(_) => write!(f, "Callback"),
             Self::CopySecret { .. } => write!(f, "CopySecret"),

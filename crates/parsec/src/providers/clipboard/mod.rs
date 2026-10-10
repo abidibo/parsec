@@ -1,7 +1,8 @@
-//! `cb <text>`: searchable clipboard history. Enter copies the entry back to
-//! the clipboard (Wayland offers no safe way to paste into another window
-//! without a Shell extension). Tab offers pin, unpin and delete; pinned
-//! entries are your snippets and never expire.
+//! `cb <text>`: searchable clipboard history. Enter pastes the entry into
+//! the window you came from when the Shell extension is running, and copies
+//! it back to the clipboard otherwise (Wayland offers no safe way to paste
+//! into another window without one). Tab offers pin, unpin and delete;
+//! pinned entries are your snippets and never expire.
 
 mod store;
 mod watcher;
@@ -28,19 +29,36 @@ impl ClipboardProvider {
             (c.clipboard.enabled, c.clipboard.poll_secs)
         };
         if daemon && enabled {
-            let store = store.clone();
-            let cfg = cfg.clone();
-            watcher::start(poll_secs, move |text| {
-                let (max_items, max_bytes) = {
-                    let c = cfg.borrow();
-                    (c.clipboard.max_items, c.clipboard.max_bytes)
-                };
-                if text.len() > max_bytes || crate::core::secrets::is_secret(&text) {
-                    return;
-                }
-                let mut s = store.borrow_mut();
-                if s.push(&text, max_items) {
-                    s.save();
+            let on_text: Rc<dyn Fn(String)> = {
+                let store = store.clone();
+                let cfg = cfg.clone();
+                Rc::new(move |text: String| {
+                    let (max_items, max_bytes) = {
+                        let c = cfg.borrow();
+                        (c.clipboard.max_items, c.clipboard.max_bytes)
+                    };
+                    if text.len() > max_bytes || crate::core::secrets::is_secret(&text) {
+                        return;
+                    }
+                    let mut s = store.borrow_mut();
+                    if s.push(&text, max_items) {
+                        s.save();
+                    }
+                })
+            };
+            // The Shell extension reports changes itself. Without it, fall
+            // back to wl-paste or xclip, started once, the first time the
+            // bridge reports the extension absent.
+            let bridge = crate::gnome_shell::bridge();
+            bridge.on_clipboard({
+                let on_text = on_text.clone();
+                move |text| on_text(text)
+            });
+            let legacy_started = Rc::new(std::cell::Cell::new(false));
+            bridge.on_state(move |active| {
+                if !active && !legacy_started.replace(true) {
+                    let on_text = on_text.clone();
+                    watcher::start(poll_secs, move |text| on_text(text));
                 }
             });
         }
@@ -71,14 +89,19 @@ impl ClipboardProvider {
                 Ok(())
             })),
         };
-        vec![
-            Action {
-                label: "Copy".into(),
-                kind: ActionKind::CopyText(e.text.clone()),
-            },
-            pin,
-            delete,
-        ]
+        let copy = Action {
+            label: "Copy".into(),
+            kind: ActionKind::CopyText(e.text.clone()),
+        };
+        if crate::gnome_shell::bridge().is_active() {
+            let paste = Action {
+                label: "Paste".into(),
+                kind: ActionKind::Paste(e.text.clone()),
+            };
+            vec![paste, copy, pin, delete]
+        } else {
+            vec![copy, pin, delete]
+        }
     }
 }
 

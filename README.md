@@ -19,6 +19,7 @@ Rust, GTK 4, libadwaita. Wayland first.
 - [First run](#first-run)
 - [Using it](#using-it)
 - [Settings and configuration](#settings-and-configuration)
+- [GNOME Shell extension](#gnome-shell-extension)
 - [Plugins](#plugins)
 - [Styling](#styling)
 - [Command line](#command-line)
@@ -40,6 +41,7 @@ Runtime:
 | `plocate` | files anywhere on disk; Tracker alone covers Documents, Downloads, Desktop and media | recommended |
 | `docker`, `systemctl` | the `dk` and `svc` verbs | optional |
 | `gh` (GitHub CLI), logged in | the `gh` and `pr` verbs | optional |
+| the Parsec Shell extension | window switching, paste into the previous window, event-driven clipboard on any GNOME (see [below](#gnome-shell-extension)) | optional |
 
 Build:
 
@@ -75,15 +77,16 @@ The script:
 5. starts the daemon
 
 Pick another key with `PARSEC_HOTKEY='<Super>space' scripts/install.sh`, or
-change it later in GNOME Settings › Keyboard › Custom Shortcuts.
+change it later in GNOME Settings › Keyboard › Custom Shortcuts. Add
+`PARSEC_EXTENSION=1` to also install the [Shell extension](#gnome-shell-extension).
 
 `~/.local/bin` must be on your `PATH` for `parsec` to work from a shell; the
 hotkey uses the full path and works regardless.
 
 To uninstall: delete `~/.local/bin/parsec`, the two desktop files named
 `org.abidibo.Parsec.desktop` under `~/.local/share/applications` and
-`~/.config/autostart`, the custom shortcut, and optionally
-`~/.config/parsec` and `~/.local/share/parsec`.
+`~/.config/autostart`, the custom shortcut, the extension with `parsec extension remove`, and
+optionally `~/.config/parsec` and `~/.local/share/parsec`.
 
 ## First run
 
@@ -126,6 +129,7 @@ narrows the search to one of them.
 | `ssh host` | hosts from `~/.ssh/config`; Enter connects in your terminal |
 | `dk name` | Docker containers: shell, logs, start, stop, restart |
 | `svc name` | systemd services, user and system: status, logs, restart |
+| `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `parsec` | Parsec's own entries: settings, quit |
 
 Keys:
@@ -150,7 +154,9 @@ path. Folders are rescanned every two minutes and whenever the setting changes.
 ### Clipboard history and snippets
 
 Enter copies an entry back to the clipboard; paste it with Ctrl+V in the app
-you're in. Tab offers *Pin as snippet* and *Delete*. Pinned entries never
+you're in. With the [Shell extension](#gnome-shell-extension) Enter pastes
+it straight into the window you came from (Ctrl+Shift+V in terminals) and
+*Copy* moves to Tab. Tab also offers *Pin as snippet* and *Delete*. Pinned entries never
 expire and show a star. History lives in `~/.local/share/parsec/clipboard.json`
 with mode 0600.
 
@@ -161,7 +167,8 @@ process cannot be told about clipboard changes. Parsec then reads the
 clipboard once a second through `xclip` and XWayland, which the compositor
 keeps in sync with the Wayland clipboard. Install `xclip` or history stays off,
 with a line in the log saying so. On GNOME 48+, sway or Hyprland it is
-event-driven and needs nothing extra.
+event-driven and needs nothing extra. The [Shell extension](#gnome-shell-extension)
+makes it event-driven on any GNOME and replaces `xclip`.
 
 ### Files
 
@@ -174,6 +181,15 @@ in folder, open a terminal there, open in editor, copy path. Settings ›
 Providers limits the search to folders, excludes folder names, and toggles
 hidden files and each source. Files are also suggested when a plain query
 matches nothing else.
+
+### Windows
+
+With the [Shell extension](#gnome-shell-extension) running, open windows are
+results too. A plain query matches window titles and application names
+alongside everything else, so `fire` offers the Firefox window you already
+have next to a fresh launch. `win` on its own lists every window, most
+recent first; `win mail` filters. Enter switches to the window, changing
+workspace if needed; Tab offers *Close window*.
 
 ### Infrastructure
 
@@ -267,6 +283,7 @@ files = "f"
 ssh = "ssh"
 docker = "dk"
 services = "svc"
+windows = "win"
 
 [files]
 roots = ["~"]
@@ -278,6 +295,9 @@ plocate = true
 [appearance]
 theme = "dark"         # dark | light | system
 accent = "system"      # system | "#rrggbb"
+
+[shell]
+extension = true       # use the Shell extension when it is running
 
 [[shortcuts]]
 name = "Google"
@@ -299,6 +319,46 @@ when there is nothing to run. Some terminals:
 ["alacritty", "--working-directory", "{cwd}", "-e", "{exec}"]
 ["foot", "--working-directory={cwd}", "{exec}"]
 ```
+
+## GNOME Shell extension
+
+Parsec is a normal GTK application, and on Wayland that means it cannot see
+other windows, type into them, or watch the clipboard on GNOME before 48.
+A small optional extension, `data/extension/parsec@abidibo.org`, runs
+inside GNOME Shell and lends Parsec those three abilities over D-Bus. It has
+no interface of its own, and Parsec works unchanged without it: no window
+results, Enter copies instead of pasting, and the clipboard is polled on
+GNOME 46 and 47.
+
+Install it from Settings › Launcher › *GNOME Shell extension*, with
+`PARSEC_EXTENSION=1 scripts/install.sh`, or from a shell:
+
+```sh
+parsec extension install     # copies the files and enables the extension
+parsec extension status
+parsec extension remove
+```
+
+The extension is bundled inside the binary, so `install` always writes the
+version matching your Parsec; the settings row offers *Update* when the one
+on disk is older. **A logout is needed after installing or updating**: on
+Wayland, GNOME Shell only loads extensions at login. The settings row and
+`parsec extension status` say when that is the case. Until then, and on sway
+or Hyprland, nothing changes.
+
+What it gives you:
+
+- **Windows** as results, see [above](#windows).
+- **Paste**: clipboard entries and snippets land in the window you came
+  from. Parsec hides, the extension waits for focus to return, then types
+  Ctrl+V, or Ctrl+Shift+V when that window is a terminal.
+- **Clipboard tracking without polling** on every GNOME version, and
+  reliable "was it still there" checks before a copied password is cleared.
+
+The `[shell] extension` switch in the config, also in settings, keeps the
+extension installed but makes Parsec ignore it. The extension lists GNOME
+45 to 49 in its `metadata.json`; a newer Shell refuses to load it until that
+list is extended.
 
 ## Plugins
 
@@ -357,8 +417,9 @@ exactly one line on stdout:
 
 Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
 out of the clipboard history and cleared after 15 s), `run` an argv array,
-or `callback` with any JSON, which comes back to the plugin in an `activate`
-message when the user picks it. The first action runs on Enter, the others
+`paste` text (typed into the previous window with the Shell extension,
+copied without it), or `callback` with any JSON, which comes back to the
+plugin in an `activate` message when the user picks it. The first action runs on Enter, the others
 are reachable with Tab. Items with no actions are informational.
 
 Rules of the road: answer within three seconds or the query is dropped and
@@ -391,6 +452,7 @@ parsec --background  start the daemon without showing the window (autostart uses
 parsec toggle        same as plain parsec; reads better in a keybinding
 parsec settings      open the settings window
 parsec plugin ...    list | install <zip|dir|git-url> | remove <id>
+parsec extension ... status | install | remove   (the GNOME Shell extension)
 parsec config        print the effective configuration and the file path
 parsec query <text>  run one search without a window and print the results
 ```
@@ -424,16 +486,18 @@ crates/parsec/src
 ├── plugins/         plugin packages: manifest, install, remove
 ├── config.rs        config file, templates, detection defaults
 ├── detect.rs        editor, terminal, project folder, database detection
+├── gnome_shell.rs   the Shell extension: D-Bus bridge, install, status
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
-│                    files, infra (ssh, docker, services), plugin host, system
+│                    files, infra (ssh, docker, services), windows, plugin host, system
 └── ui/              launcher window, preferences window
 ```
 
 A provider implements one trait: an id, an optional verb, and an async
 `query` returning items with actions. Actions are launch an app, run a command,
-copy text, copy a secret, open a URL, run a callback, or prompt the user for
-input. See `DESIGN.md` for the decisions and the roadmap.
+copy text, copy a secret, paste text, open a URL, run a callback, or prompt
+the user for input. The extension lives in `data/extension` and is embedded
+in the binary at build time. See `DESIGN.md` for the decisions and the roadmap.
 
 ## Troubleshooting
 

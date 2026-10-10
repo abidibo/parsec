@@ -435,6 +435,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             v.clipboard,
             Box::new(|c: &mut Config, s: String| c.verbs.clipboard = s),
         ),
+        (
+            "Windows (needs the Shell extension)",
+            v.windows,
+            Box::new(|c: &mut Config, s: String| c.verbs.windows = s),
+        ),
     ] {
         let set = Rc::new(set);
         verbs.add(&text_row(
@@ -561,6 +566,7 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
     key_row.add_suffix(&change);
     hotkey.add(&key_row);
     page.add(&hotkey);
+    page.add(&extension_group(window, cfg.clone()));
 
     let look = adw::PreferencesGroup::builder()
         .title("Appearance")
@@ -665,6 +671,111 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
 // ---------------------------------------------------------------- helpers
 
 /// Mutate the shared config and persist it.
+/// The GNOME Shell extension: status, install, update, remove, and the
+/// switch that tells the daemon whether to use it.
+fn extension_group(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::PreferencesGroup {
+    use crate::gnome_shell::{self, Status};
+    let group = adw::PreferencesGroup::builder()
+        .title("GNOME Shell extension")
+        .description(
+            "Optional. Lets Parsec switch between open windows, paste clipboard entries \
+             straight into the window you came from, and follow the clipboard without polling.",
+        )
+        .build();
+
+    let row = adw::ActionRow::builder().title("Extension").build();
+    row.add_prefix(&gtk::Image::from_icon_name("application-x-addon-symbolic"));
+    let action = gtk::Button::builder().valign(gtk::Align::Center).build();
+    let remove = gtk::Button::builder()
+        .label("Remove")
+        .valign(gtk::Align::Center)
+        .build();
+    row.add_suffix(&action);
+    row.add_suffix(&remove);
+
+    let refresh: Rc<dyn Fn()> = {
+        let (row, action, remove) = (row.clone(), action.clone(), remove.clone());
+        Rc::new(move || {
+            let status = gnome_shell::status();
+            row.set_subtitle(&status.describe());
+            match &status {
+                Status::Unsupported => {
+                    action.set_visible(false);
+                    remove.set_visible(false);
+                }
+                Status::NotInstalled => {
+                    action.set_label("Install");
+                    action.set_visible(true);
+                    remove.set_visible(false);
+                }
+                Status::Installed { outdated, .. } => {
+                    action.set_label("Update");
+                    action.set_visible(*outdated);
+                    remove.set_visible(true);
+                }
+            }
+        })
+    };
+    refresh();
+
+    action.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        refresh,
+        move |_| {
+            match gnome_shell::install() {
+                Ok(true) => window.add_toast(adw::Toast::new(
+                    "Extension installed. Log out and back in to activate it.",
+                )),
+                Ok(false) => window.add_toast(adw::Toast::new(
+                    "Extension updated. Log out and back in to load the new version.",
+                )),
+                Err(e) => window.add_toast(adw::Toast::new(&format!("Install failed: {e:#}"))),
+            }
+            refresh();
+        }
+    ));
+    remove.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        #[strong]
+        refresh,
+        move |_| {
+            match gnome_shell::remove() {
+                Ok(()) => window.add_toast(adw::Toast::new("Extension removed")),
+                Err(e) => window.add_toast(adw::Toast::new(&format!("Remove failed: {e:#}"))),
+            }
+            refresh();
+        }
+    ));
+    // Follow the bus, so the row updates when the extension comes and goes.
+    gnome_shell::bridge().on_state(glib::clone!(
+        #[weak]
+        row,
+        #[strong]
+        refresh,
+        move |_| {
+            let _ = &row;
+            refresh();
+        }
+    ));
+    group.add(&row);
+
+    let enabled = cfg.borrow().shell.extension;
+    group.add(&switch_row(
+        "Use the extension",
+        "Off keeps it installed but Parsec behaves as if it were absent",
+        enabled,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.shell.extension = on)
+        ),
+    ));
+    group
+}
+
 fn edit(cfg: &SharedConfig, f: impl FnOnce(&mut Config)) {
     let mut c = cfg.borrow_mut();
     f(&mut c);

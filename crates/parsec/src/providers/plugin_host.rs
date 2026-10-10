@@ -169,6 +169,8 @@ struct ReplyAction {
     #[serde(default)]
     copy_secret: Option<String>,
     #[serde(default)]
+    paste: Option<String>,
+    #[serde(default)]
     run: Option<Vec<String>>,
     #[serde(default)]
     callback: Option<Value>,
@@ -346,6 +348,8 @@ impl PluginHost {
                         text: t,
                         clear_after_secs: 15,
                     }
+                } else if let Some(t) = a.paste {
+                    ActionKind::Paste(t)
                 } else if let Some(argv) = a.run {
                     ActionKind::Command(argv)
                 } else if let Some(data) = a.callback {

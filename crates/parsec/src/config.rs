@@ -32,6 +32,22 @@ pub struct Config {
     pub plugins: Plugins,
     pub files: Files,
     pub appearance: Appearance,
+    pub shell: Shell,
+}
+
+/// The GNOME Shell extension (window switching, direct paste, native
+/// clipboard tracking). Installed separately; see Settings › Launcher.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Shell {
+    /// Use the extension when it is running. Off = behave as if absent.
+    pub extension: bool,
+}
+
+impl Default for Shell {
+    fn default() -> Self {
+        Self { extension: true }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -199,6 +215,7 @@ pub struct Verbs {
     pub ssh: String,
     pub docker: String,
     pub services: String,
+    pub windows: String,
 }
 
 impl Default for Clipboard {
@@ -224,6 +241,7 @@ impl Default for Verbs {
             ssh: "ssh".into(),
             docker: "dk".into(),
             services: "svc".into(),
+            windows: "win".into(),
         }
     }
 }
@@ -277,6 +295,7 @@ impl Default for Config {
             plugins: Plugins::default(),
             files: Files::default(),
             appearance: Appearance::default(),
+            shell: Shell::default(),
         }
     }
 }
@@ -425,6 +444,7 @@ files = {v_files}
 ssh = {v_ssh}
 docker = {v_docker}
 services = {v_services}
+windows = {v_windows}
 
 [files]
 # Only show files under these folders ("~" allowed). Empty = anywhere.
@@ -444,6 +464,11 @@ theme = {theme}
 # "system" uses GNOME's accent colour where available (GNOME 47+), otherwise
 # Parsec's violet. Or a hex colour like #ff7a59.
 accent = {accent}
+
+[shell]
+# Use the GNOME Shell extension when it is installed (windows, paste,
+# clipboard). Install it from Settings › Launcher or `parsec extension install`.
+extension = {shell_ext}
 
 [plugins]
 # Installed plugins (see Settings › Plugins) that should stay off.
@@ -477,6 +502,8 @@ disabled = {plugins_disabled}
             v_ssh = toml_str(&self.verbs.ssh),
             v_docker = toml_str(&self.verbs.docker),
             v_services = toml_str(&self.verbs.services),
+            v_windows = toml_str(&self.verbs.windows),
+            shell_ext = self.shell.extension,
             files_roots = toml_array(&self.files.roots),
             files_exclude = toml_array(&self.files.exclude),
             files_hidden = self.files.hidden,
@@ -605,6 +632,7 @@ mod tests {
             },
             github: Github::default(),
             clipboard: Clipboard::default(),
+            shell: Shell::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),

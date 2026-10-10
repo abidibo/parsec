@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build in release mode, install to ~/.local, enable autostart and bind a hotkey.
+# PARSEC_EXTENSION=1 also installs the optional GNOME Shell extension.
 set -euo pipefail
 
 HOTKEY="${PARSEC_HOTKEY:-<Control>space}"
@@ -29,8 +30,16 @@ gsettings set "$SCHEMA.custom-keybinding:$KEY_PATH" name "Parsec"
 gsettings set "$SCHEMA.custom-keybinding:$KEY_PATH" command "$HOME/.local/bin/parsec toggle"
 gsettings set "$SCHEMA.custom-keybinding:$KEY_PATH" binding "$HOTKEY"
 
+# Optional GNOME Shell extension: window switching, direct paste, clipboard.
+if [[ "${PARSEC_EXTENSION:-0}" == "1" ]]; then
+  "$HOME/.local/bin/parsec" extension install
+fi
+
 # (Re)start the daemon.
 pkill -x parsec 2>/dev/null || true
 nohup "$HOME/.local/bin/parsec" --background >/dev/null 2>&1 &
 
 echo "installed. hotkey: $HOTKEY  (override with PARSEC_HOTKEY=... )"
+if [[ "${PARSEC_EXTENSION:-0}" != "1" ]]; then
+  echo "tip: PARSEC_EXTENSION=1 scripts/install.sh adds the GNOME Shell extension (windows, paste)"
+fi

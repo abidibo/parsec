@@ -180,10 +180,15 @@ pub enum Outcome {
 fn schedule_clipboard_clear(text: String, after_secs: u64) {
     glib::timeout_add_local_once(std::time::Duration::from_secs(after_secs), move || {
         glib::spawn_future_local(async move {
-            let current = gio::spawn_blocking(crate::providers::clipboard::current_text)
-                .await
-                .ok()
-                .flatten();
+            let bridge = crate::gnome_shell::bridge();
+            let current = if bridge.is_active() {
+                bridge.clipboard_text().await
+            } else {
+                gio::spawn_blocking(crate::providers::clipboard::current_text)
+                    .await
+                    .ok()
+                    .flatten()
+            };
             let still_there = current.as_deref().is_none_or(|c| c == text);
             if still_there {
                 tracing::info!("clearing copied secret from the clipboard");
@@ -255,6 +260,14 @@ fn run(kind: &ActionKind) -> Result<()> {
                 .with_context(|| format!("spawning {program}"))?;
         }
         ActionKind::CopyText(text) => copy_text(text)?,
+        ActionKind::Paste(text) => {
+            let bridge = crate::gnome_shell::bridge();
+            if bridge.is_active() {
+                bridge.paste(text)?;
+            } else {
+                copy_text(text)?;
+            }
+        }
         ActionKind::CopySecret {
             text,
             clear_after_secs,
