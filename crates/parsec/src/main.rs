@@ -129,6 +129,8 @@ fn plugin_command(args: &[String]) -> glib::ExitCode {
 }
 
 fn extension_command(args: &[String]) -> glib::ExitCode {
+    // So the bridge's own log line reflects the config switch, as in the daemon.
+    gnome_shell::bridge().set_enabled(config::Config::load().shell.extension);
     match args.first().map(String::as_str) {
         Some("status") => {
             // Ask the bus so "running" is accurate.
