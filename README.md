@@ -4,11 +4,14 @@ A personal launcher for GNOME. Press a key, type, press Enter.
 
 ![Parsec searching for "neo": matched letters highlighted, results grouped by provider](docs/screenshot.png)
 
-Apps, your git projects, a shell runner, GitHub repositories and pull requests,
-clipboard history with pinned snippets, and KeePass entries, all in one dark
-panel that follows you between machines: everything that depends on the host
-(editor, terminal, project folders, database path) is detected on first run,
-written to a config file, and editable in a settings window.
+Apps, your git projects with their branches, commits and files, a shell
+runner, GitHub repositories and pull requests, clipboard history with pinned
+snippets, KeePass entries, files, SSH hosts, Docker containers and systemd
+services, all in one dark panel that follows you between machines: everything
+that depends on the host (editor, terminal, project folders, database path)
+is detected on first run, written to a config file, and editable in a settings
+window. An optional GNOME Shell extension adds open windows to the results
+and pastes straight into the window you came from.
 
 Rust, GTK 4, libadwaita. Wayland first.
 
@@ -524,8 +527,9 @@ crates/parsec/src
 A provider implements one trait: an id, an optional verb, and an async
 `query` returning items with actions. Actions are launch an app, run a command,
 copy text, copy a secret, paste text, open a URL, run a callback, prompt
-the user for input, or browse into a list of further items. The extension lives in `data/extension` and is embedded
-in the binary at build time. See `DESIGN.md` for the decisions and the roadmap.
+the user for input, or browse into a list of further items. The extension
+lives in `data/extension` and is embedded in the binary at build time. See
+`DESIGN.md` for the decisions and the roadmap.
 
 ## Troubleshooting
 
