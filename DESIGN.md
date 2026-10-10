@@ -86,6 +86,15 @@ Target: GNOME 46+, Wayland.
   embedded in the binary and written out by `parsec extension install` or the
   settings row; a logout loads it. Without it nothing changes.
 
+- 2026-10-10: drill-down. `ActionKind::Browse` carries a title and a lazy
+  loader returning items; the engine returns `Outcome::Browse`, the window
+  keeps a stack of levels (chip = level title, entry = filter, Backspace or
+  Esc pop). Items inside can browse again, so trees come for free. First
+  users: projects (branches, commits, files) and the plugin protocol
+  (`browse` action → `browse` message → `results`). Backlog entries that
+  are now one lazy loader each: docker details, KeePass groups, folder
+  navigation from file results.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

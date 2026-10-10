@@ -1,5 +1,5 @@
 use super::frecency::Frecency;
-use super::{secrets, ActionKind, Hit, Item, Matcher, Prompt, Provider, Query};
+use super::{secrets, ActionKind, Browse, Hit, Item, Matcher, Prompt, Provider, Query};
 use anyhow::{Context, Result};
 use gtk::gio;
 use gtk::glib;
@@ -15,6 +15,8 @@ pub struct Engine {
 }
 
 pub const RESULT_LIMIT: usize = 10;
+/// A browsed list is scrolled, not ranked, so it can be longer.
+pub const BROWSE_LIMIT: usize = 60;
 
 impl Engine {
     pub fn new(providers: Vec<Box<dyn Provider>>) -> Self {
@@ -128,11 +130,61 @@ impl Engine {
             // Not a pick yet; the provider decides what happens after input.
             return Ok(Outcome::Prompt(p.clone()));
         }
-        run(&action.kind)?;
+        let outcome = match &action.kind {
+            // Drilling in counts as a pick of the item, not of what's inside.
+            ActionKind::Browse(b) => Outcome::Browse(b.clone()),
+            kind => {
+                run(kind)?;
+                Outcome::Done
+            }
+        };
         let mut frec = self.frecency.borrow_mut();
         frec.record(&item.id);
         frec.save();
-        Ok(Outcome::Done)
+        Ok(outcome)
+    }
+
+    /// Narrow a browsed list to `text`: fuzzy on title and subtitle, best
+    /// first; the list's own order when `text` is empty. No frecency: a
+    /// level is a view of one thing, not a ranking across sources.
+    pub fn filter(
+        &self,
+        items: &[Item],
+        text: &str,
+        provider: &'static str,
+        section: &str,
+    ) -> Vec<Hit> {
+        let text = text.trim();
+        let q = Query::new(text, None, &self.matcher);
+        let mut scored: Vec<(u32, Hit)> = items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| {
+                let score = if text.is_empty() {
+                    (items.len() - i) as u32
+                } else {
+                    let fields = [item.title.as_str(), item.subtitle.as_deref().unwrap_or("")];
+                    q.score_any(fields)?
+                };
+                let highlight = if text.is_empty() {
+                    Vec::new()
+                } else {
+                    q.indices(&item.title)
+                };
+                Some((
+                    score,
+                    Hit {
+                        item: item.clone(),
+                        provider,
+                        section: section.to_string(),
+                        highlight,
+                    },
+                ))
+            })
+            .collect();
+        scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        scored.truncate(BROWSE_LIMIT);
+        scored.into_iter().map(|(_, h)| h).collect()
     }
 }
 
@@ -172,6 +224,8 @@ pub enum Outcome {
     Done,
     /// Keep the launcher open and collect input.
     Prompt(Prompt),
+    /// Keep the launcher open and show this list as a new level.
+    Browse(Browse),
 }
 
 /// Clear the clipboard after a delay, unless something else was copied in
@@ -291,6 +345,7 @@ fn run(kind: &ActionKind) -> Result<()> {
         }
         ActionKind::Callback(f) => f()?,
         ActionKind::Prompt(_) => unreachable!("prompts are handled by the UI"),
+        ActionKind::Browse(_) => unreachable!("browsing is handled by the UI"),
         ActionKind::OpenUri(uri) => {
             gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>)
                 .with_context(|| format!("opening {uri}"))?;

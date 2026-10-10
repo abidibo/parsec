@@ -6,7 +6,7 @@
 //! GNOME theme. Colours are `@define-color` variables so
 //! `~/.config/parsec/style.css` can override them without touching rules.
 
-use crate::core::{Engine, Hit, Icon, Outcome, Prompt};
+use crate::core::{ActionKind, Browse, Engine, Hit, Icon, Item, Outcome, Prompt};
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::{Cell, RefCell};
@@ -292,6 +292,17 @@ const HINTS_SEARCH: &[(&str, &str)] = &[
 ];
 const HINTS_PROMPT: &[(&str, &str)] = &[("↵", "submit"), ("esc", "cancel")];
 const HINTS_CHIP: &[(&str, &str)] = &[("⌫", "leave mode"), ("↵", "run"), ("esc", "close")];
+const HINTS_BROWSE: &[(&str, &str)] = &[("⌫", "back"), ("⇥", "actions"), ("↵", "run")];
+
+/// One drilled-into list. The stack of these is the breadcrumb.
+struct Level {
+    browse: Browse,
+    items: Vec<Item>,
+    provider: &'static str,
+    /// What the entry held when this level was opened, put back on leaving.
+    entry_before: String,
+    chip_before: Option<(String, String)>,
+}
 
 #[derive(Clone)]
 pub struct LauncherWindow {
@@ -317,6 +328,8 @@ pub struct LauncherWindow {
     busy: Rc<Cell<bool>>,
     /// Keyword shown as a chip; the entry then holds only the rest.
     verb: Rc<RefCell<Option<String>>>,
+    /// Open drill-down levels, innermost last.
+    levels: Rc<RefCell<Vec<Level>>>,
     /// Set while the code changes the entry text itself.
     suppress: Rc<Cell<bool>>,
     entrance: adw::TimedAnimation,
@@ -459,6 +472,7 @@ impl LauncherWindow {
             prompt: Rc::new(RefCell::new(None)),
             busy: Rc::new(Cell::new(false)),
             verb: Rc::new(RefCell::new(None)),
+            levels: Rc::new(RefCell::new(Vec::new())),
             suppress: Rc::new(Cell::new(false)),
             entrance,
         };
@@ -550,12 +564,18 @@ impl LauncherWindow {
                     Key::Escape => {
                         if this.prompt.borrow().is_some() {
                             this.leave_prompt(true);
+                        } else if this.in_browse() {
+                            this.leave_browse();
                         } else {
                             this.hide();
                         }
                         glib::Propagation::Stop
                     }
                     _ if this.prompt.borrow().is_some() => glib::Propagation::Proceed,
+                    Key::BackSpace if this.in_browse() && this.entry.text().is_empty() => {
+                        this.leave_browse();
+                        glib::Propagation::Stop
+                    }
                     Key::BackSpace
                         if this.verb.borrow().is_some() && this.entry.text().is_empty() =>
                     {
@@ -624,6 +644,7 @@ impl LauncherWindow {
 
     pub fn show(&self) {
         self.was_active.set(false);
+        self.levels.borrow_mut().clear();
         self.set_chip(None);
         self.set_entry_text("");
         self.search("");
@@ -677,6 +698,10 @@ impl LauncherWindow {
     }
 
     fn on_typed(&self) {
+        if self.in_browse() {
+            self.render_level();
+            return;
+        }
         if self.verb.borrow().is_none() {
             let text = self.entry.text().to_string();
             if let Some((verb, label)) = self.engine.verb_info(&text) {
@@ -724,8 +749,9 @@ impl LauncherWindow {
         let in_prompt = self.prompt.borrow().is_some();
         self.scroller.set_visible(!none);
         self.empty.set_visible(none && !query_empty && !in_prompt);
-        self.welcome
-            .set_visible(none && query_empty && !in_prompt && self.verb.borrow().is_none());
+        self.welcome.set_visible(
+            none && query_empty && !in_prompt && self.verb.borrow().is_none() && !self.in_browse(),
+        );
         // Hints only when there is nothing else to look at.
         self.hints.set_visible(none || in_prompt);
         *self.action_idx.borrow_mut() = vec![0; hits.len()];
@@ -776,18 +802,98 @@ impl LauncherWindow {
             }
         };
         let action = self.action_idx.borrow().get(idx).copied().unwrap_or(0);
-        let is_prompt = matches!(
+        let stays_open = matches!(
             item.actions.get(action).map(|a| &a.kind),
-            Some(crate::core::ActionKind::Prompt(_))
+            Some(ActionKind::Prompt(_) | ActionKind::Browse(_))
         );
-        if !is_prompt {
+        if !stays_open {
             self.hide();
         }
+        let provider = self.results.borrow()[idx].provider;
         match self.engine.activate(&item, action) {
             Ok(Outcome::Done) => {}
             Ok(Outcome::Prompt(p)) => self.enter_prompt(p),
+            Ok(Outcome::Browse(b)) => self.enter_browse(b, provider),
             Err(e) => tracing::error!("activation failed: {e:#}"),
         }
+    }
+
+    // ------------------------------------------------------------ drill-down
+
+    fn in_browse(&self) -> bool {
+        !self.levels.borrow().is_empty()
+    }
+
+    /// Push a level: remember where we were, show the chip, load the list.
+    fn enter_browse(&self, browse: Browse, provider: &'static str) {
+        let chip_before = if self.in_browse() {
+            None
+        } else {
+            self.verb
+                .borrow()
+                .clone()
+                .map(|v| (v, self.chip.label().to_string()))
+        };
+        self.levels.borrow_mut().push(Level {
+            items: Vec::new(),
+            provider,
+            entry_before: self.entry.text().to_string(),
+            chip_before,
+            browse: browse.clone(),
+        });
+        *self.verb.borrow_mut() = None;
+        self.chip.set_label(&browse.title);
+        self.chip.set_visible(true);
+        self.entry.set_placeholder_text(Some("Filter…"));
+        self.set_hints(HINTS_BROWSE);
+        self.set_entry_text("");
+        self.render(Vec::new(), true);
+
+        let gen = self.generation.get() + 1;
+        self.generation.set(gen);
+        let depth = self.levels.borrow().len();
+        let this = self.clone();
+        glib::spawn_future_local(async move {
+            let items = (browse.load)().await;
+            if this.generation.get() != gen || this.levels.borrow().len() != depth {
+                return;
+            }
+            if let Some(level) = this.levels.borrow_mut().last_mut() {
+                level.items = items;
+            }
+            this.render_level();
+        });
+    }
+
+    /// Show the innermost level filtered by the entry text.
+    fn render_level(&self) {
+        let text = self.entry.text().to_string();
+        let hits = {
+            let levels = self.levels.borrow();
+            let Some(level) = levels.last() else { return };
+            self.engine
+                .filter(&level.items, &text, level.provider, &level.browse.title)
+        };
+        self.render(hits, text.trim().is_empty());
+    }
+
+    /// Pop a level: back to the parent list, or to the search.
+    fn leave_browse(&self) {
+        let Some(level) = self.levels.borrow_mut().pop() else {
+            return;
+        };
+        self.generation.set(self.generation.get() + 1);
+        if let Some(parent) = self.levels.borrow().last() {
+            self.chip.set_label(&parent.browse.title);
+        }
+        if self.in_browse() {
+            self.set_entry_text(&level.entry_before);
+            self.render_level();
+            return;
+        }
+        self.set_chip(level.chip_before);
+        self.set_entry_text(&level.entry_before);
+        self.search(&self.composed());
     }
 
     // ------------------------------------------------------------ prompts
@@ -1019,6 +1125,18 @@ fn row_for(hit: &Hit, accent: &str) -> gtk::ListBoxRow {
     let trailing = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     trailing.set_valign(gtk::Align::Center);
     trailing.append(&action);
+    if matches!(
+        item.actions.first().map(|a| &a.kind),
+        Some(ActionKind::Browse(_))
+    ) {
+        trailing.append(
+            &gtk::Label::builder()
+                .label("›")
+                .css_classes(["parsec-action-key"])
+                .tooltip_text("Enter to open")
+                .build(),
+        );
+    }
     if item.actions.len() > 1 {
         trailing.append(
             &gtk::Label::builder()

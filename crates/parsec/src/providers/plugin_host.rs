@@ -176,6 +176,8 @@ struct ReplyAction {
     run: Option<Vec<String>>,
     #[serde(default)]
     callback: Option<Value>,
+    #[serde(default)]
+    browse: Option<Value>,
 }
 
 pub struct PluginHost {
@@ -313,17 +315,39 @@ impl PluginHost {
         parsed
             .items
             .into_iter()
-            .map(|it| self.item(plugin, &info, it, q.text))
+            .map(|it| item(plugin, &info, it, q.text))
             .collect()
     }
+}
 
-    fn item(
-        &self,
-        plugin: &Rc<RefCell<Plugin>>,
-        info: &Installed,
-        it: ReplyItem,
-        text: &str,
-    ) -> Item {
+/// Send one message to a running plugin, waiting for our turn. Errors are
+/// counted against the plugin like query failures.
+async fn call(plugin: &Rc<RefCell<Plugin>>, msg: &Value) -> Result<Value, String> {
+    let busy = plugin.borrow().busy.clone();
+    while busy.get() {
+        glib::timeout_future(Duration::from_millis(5)).await;
+    }
+    busy.set(true);
+    let result = {
+        let mut p = plugin.borrow_mut();
+        match p.running.as_mut() {
+            Some(r) => roundtrip(r, msg, QUERY_TIMEOUT).await,
+            None => Err("plugin not running".into()),
+        }
+    };
+    if let Err(e) = &result {
+        plugin
+            .borrow_mut()
+            .fail(&format!("{} failed: {e}", msg["type"]));
+    }
+    busy.set(false);
+    result
+}
+
+/// A plugin's item as a core `Item`. Free-standing so a browsed list can
+/// build its own items, which can browse further.
+fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &str) -> Item {
+    {
         let icon = match it.icon.as_deref().map(str::trim) {
             None | Some("") => info.icon(),
             Some(name) => {
@@ -367,20 +391,43 @@ impl PluginHost {
                         let plugin = plugin.clone();
                         let msg = msg.clone();
                         glib::spawn_future_local(async move {
-                            let busy = plugin.borrow().busy.clone();
-                            while busy.get() {
-                                glib::timeout_future(Duration::from_millis(5)).await;
-                            }
-                            busy.set(true);
-                            let mut p = plugin.borrow_mut();
-                            if let Some(r) = p.running.as_mut() {
-                                if let Err(e) = roundtrip(r, &msg, QUERY_TIMEOUT).await {
-                                    p.fail(&format!("activate failed: {e}"));
-                                }
-                            }
-                            busy.set(false);
+                            let _ = call(&plugin, &msg).await;
                         });
                         Ok(())
+                    }))
+                } else if let Some(data) = a.browse {
+                    // The plugin answers a `browse` message with `results`,
+                    // whose items may browse again.
+                    let plugin = plugin.clone();
+                    let info = info.clone();
+                    let text = text.to_string();
+                    let title = if label.is_empty() {
+                        it.title.clone()
+                    } else {
+                        label.clone()
+                    };
+                    let msg =
+                        json!({"type": "browse", "item": item_id, "data": data, "text": text});
+                    ActionKind::Browse(crate::core::Browse::new(title, move || {
+                        let (plugin, info, msg, text) =
+                            (plugin.clone(), info.clone(), msg.clone(), text.clone());
+                        async move {
+                            let Ok(reply) = call(&plugin, &msg).await else {
+                                return Vec::new();
+                            };
+                            let parsed: Reply = match serde_json::from_value(reply) {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    tracing::warn!(plugin = %info.manifest.id, "bad browse results: {e}");
+                                    return Vec::new();
+                                }
+                            };
+                            parsed
+                                .items
+                                .into_iter()
+                                .map(|it| item(&plugin, &info, it, &text))
+                                .collect()
+                        }
                     }))
                 } else {
                     return None;

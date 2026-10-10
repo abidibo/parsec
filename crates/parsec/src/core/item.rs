@@ -78,6 +78,38 @@ pub enum ActionKind {
     /// Ask the user for a line of text (a password, a name...) in the search
     /// box, then hand it to the provider. The launcher stays open.
     Prompt(Prompt),
+    /// Drill into a list: the launcher pushes a level, the search box
+    /// filters it, Backspace or Esc come back. Items in the list can
+    /// themselves browse further.
+    Browse(Browse),
+}
+
+/// A list to drill into. `load` runs when the level opens, so the items
+/// are fresh and nothing is computed for rows nobody expands.
+#[derive(Clone)]
+pub struct Browse {
+    /// Shown in the chip while the level is open, e.g. "Branches".
+    pub title: String,
+    pub load: Rc<dyn Fn() -> LocalFuture<Vec<Item>>>,
+}
+
+impl Browse {
+    pub fn new<F, Fut>(title: impl Into<String>, load: F) -> Self
+    where
+        F: Fn() -> Fut + 'static,
+        Fut: std::future::Future<Output = Vec<Item>> + 'static,
+    {
+        Self {
+            title: title.into(),
+            load: Rc::new(move || Box::pin(load())),
+        }
+    }
+}
+
+impl std::fmt::Debug for Browse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Browse({:?})", self.title)
+    }
 }
 
 /// A request for input. `submit` runs with what was typed and resolves to
@@ -112,6 +144,7 @@ impl std::fmt::Debug for ActionKind {
             Self::CopySecret { .. } => write!(f, "CopySecret"),
             Self::PasteSecret { .. } => write!(f, "PasteSecret"),
             Self::Prompt(p) => write!(f, "{p:?}"),
+            Self::Browse(b) => write!(f, "{b:?}"),
         }
     }
 }

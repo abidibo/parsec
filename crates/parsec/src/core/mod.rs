@@ -10,6 +10,6 @@ pub mod secrets;
 
 pub use engine::Engine;
 pub use engine::Outcome;
-pub use item::{Action, ActionKind, Hit, Icon, Item, Prompt};
+pub use item::{Action, ActionKind, Browse, Hit, Icon, Item, Prompt};
 pub use matcher::Matcher;
 pub use provider::{Provider, Query};

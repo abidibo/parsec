@@ -139,7 +139,8 @@ Keys:
 | ↑ ↓ | move the selection |
 | Tab / Shift+Tab | cycle the selected row's actions; rows with several show a ⇥ mark |
 | Enter | run the action shown on the right |
-| Esc | close, or cancel a password prompt |
+| Esc | close, cancel a password prompt, or step out of a list |
+| ⌫ on an empty box | leave a keyword mode or step out of a list |
 | Ctrl+, | settings |
 
 Opening the launcher with nothing typed shows the things you have picked
@@ -150,6 +151,21 @@ verbs don't (`$ls`).
 
 Actions: open in editor, open a terminal there, open the folder, copy the
 path. Folders are rescanned every two minutes and whenever the setting changes.
+
+Further down the Tab cycle, three actions open a list instead of leaving:
+
+- *Branches*: local then remote, newest commit first, the current one
+  marked. Enter switches to it in your terminal, so a failed switch stays
+  on screen. Tab copies the name.
+- *Commits*: the last fifty. Enter shows the diff in your terminal, Tab
+  copies the hash.
+- *Files*: the repository folder. Folders open further, files open in
+  their application or your editor; both copy the path.
+
+While a list is open its name sits in the chip, the search box filters it,
+and Backspace or Esc step back out. Lists are loaded when opened, never
+before, so nothing is computed for projects you never expand. Any provider
+or plugin can offer such lists, see [Plugins](#plugins).
 
 ### Clipboard history and snippets
 
@@ -409,6 +425,7 @@ exactly one line on stdout:
 | `{"type":"init","version":"0.1.0","config":{...}}` | `{"type":"ready"}` |
 | `{"type":"query","id":7,"text":"2+2","keyword":"="}` | `{"type":"results","id":7,"items":[...]}` |
 | `{"type":"activate","item":"...","data":...,"text":"..."}` | `{"type":"ok"}` |
+| `{"type":"browse","item":"...","data":...,"text":"..."}` | `{"type":"results","items":[...]}` |
 
 `text` is what the user typed after the keyword. An item is:
 
@@ -420,11 +437,18 @@ exactly one line on stdout:
 
 Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
 out of the clipboard history and cleared after 15 s), `run` an argv array,
+`browse` with any JSON (opens a list, see below),
 `paste` text (typed into the previous window with the Shell extension,
 copied without it), `paste_secret` text (the same with the `copy_secret`
 protections), or `callback` with any JSON, which comes back to the
 plugin in an `activate` message when the user picks it. The first action runs on Enter, the others
 are reachable with Tab. Items with no actions are informational.
+
+A `browse` action asks the plugin for a list to drill into. Parsec sends
+`{"type":"browse","item":"...","data":...,"text":"..."}` and expects a
+`results` message like the answer to a query. Its items are ordinary items,
+so they can `browse` again; the action's label names the list in the chip.
+The user filters it in place and steps back with Backspace or Esc.
 
 Rules of the road: answer within three seconds or the query is dropped and
 the plugin restarted; three failures in a row disable it until Parsec restarts;
@@ -499,8 +523,8 @@ crates/parsec/src
 
 A provider implements one trait: an id, an optional verb, and an async
 `query` returning items with actions. Actions are launch an app, run a command,
-copy text, copy a secret, paste text, open a URL, run a callback, or prompt
-the user for input. The extension lives in `data/extension` and is embedded
+copy text, copy a secret, paste text, open a URL, run a callback, prompt
+the user for input, or browse into a list of further items. The extension lives in `data/extension` and is embedded
 in the binary at build time. See `DESIGN.md` for the decisions and the roadmap.
 
 ## Troubleshooting

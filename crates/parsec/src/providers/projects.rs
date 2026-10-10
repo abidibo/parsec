@@ -1,11 +1,14 @@
 //! Project jumper: every git repository under the configured roots.
-//! No prefix, so typing a project name finds it next to apps.
+//! No prefix, so typing a project name finds it next to apps. Tab reaches
+//! three lists to drill into: branches, recent commits and the files.
 
 use super::SharedConfig;
 use crate::config;
-use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Browse, Icon, Item, Provider, Query};
 use async_trait::async_trait;
 use gtk::gio;
+#[cfg(test)]
+use gtk::glib;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -137,11 +140,321 @@ impl Provider for ProjectsProvider {
                         },
                         Action {
                             label: "Copy path".into(),
-                            kind: ActionKind::CopyText(path.into_owned()),
+                            kind: ActionKind::CopyText(path.clone().into_owned()),
+                        },
+                        Action {
+                            label: "Branches".into(),
+                            kind: ActionKind::Browse(branches(self.cfg.clone(), r.path.clone())),
+                        },
+                        Action {
+                            label: "Commits".into(),
+                            kind: ActionKind::Browse(commits(self.cfg.clone(), r.path.clone())),
+                        },
+                        Action {
+                            label: "Files".into(),
+                            kind: ActionKind::Browse(folder(self.cfg.clone(), r.path.clone())),
                         },
                     ],
                 })
             })
             .collect()
+    }
+}
+
+// ---------------------------------------------------------------- drill-downs
+
+fn git(repo: &Path, args: &[&str]) -> Vec<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn sh() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into())
+}
+
+/// Run `command` in the terminal at `cwd` and stay in a shell afterwards.
+fn in_terminal(cfg: &SharedConfig, cwd: &Path, command: &str) -> Vec<String> {
+    let sh = sh();
+    cfg.borrow().terminal_command(
+        &cwd.to_string_lossy(),
+        &[sh.clone(), "-ic".into(), format!("{command}; exec {sh}")],
+    )
+}
+
+/// Local branches first, then remote ones, newest commit first. Enter
+/// switches to the branch.
+fn branches(cfg: SharedConfig, repo: PathBuf) -> Browse {
+    Browse::new("Branches", move || {
+        let (cfg, repo) = (cfg.clone(), repo.clone());
+        async move {
+            let r = repo.clone();
+            let lines = gio::spawn_blocking(move || {
+                git(
+                    &r,
+                    &[
+                        "for-each-ref",
+                        "--sort=-committerdate",
+                        "--format=%(HEAD)\t%(refname:short)\t%(committerdate:relative)\t%(subject)",
+                        "refs/heads",
+                        "refs/remotes",
+                    ],
+                )
+            })
+            .await
+            .unwrap_or_default();
+            lines
+                .iter()
+                .filter_map(|line| {
+                    let mut f = line.splitn(4, '\t');
+                    let current = f.next()? == "*";
+                    let name = f.next()?.to_string();
+                    let when = f.next().unwrap_or("").to_string();
+                    let subject = f.next().unwrap_or("").to_string();
+                    if name.ends_with("/HEAD") {
+                        return None;
+                    }
+                    // `git switch` creates a local branch from a remote one.
+                    let target = name.rsplit_once('/').map_or(name.as_str(), |(_, b)| b);
+                    let switch = format!("git switch {}", shlex::try_quote(target).ok()?);
+                    Some(Item {
+                        id: format!("branch:{}:{name}", repo.display()),
+                        title: name.clone(),
+                        subtitle: Some(if current {
+                            format!("Current · {when} · {subject}")
+                        } else {
+                            format!("{when} · {subject}")
+                        }),
+                        icon: Icon::Named(
+                            if current {
+                                "emblem-ok-symbolic"
+                            } else {
+                                "go-jump-symbolic"
+                            }
+                            .into(),
+                        ),
+                        score: 1,
+                        actions: vec![
+                            Action {
+                                label: "Switch".into(),
+                                kind: ActionKind::Command(in_terminal(&cfg, &repo, &switch)),
+                            },
+                            Action {
+                                label: "Copy name".into(),
+                                kind: ActionKind::CopyText(name),
+                            },
+                        ],
+                    })
+                })
+                .collect()
+        }
+    })
+}
+
+/// The last fifty commits. Enter shows the diff in the terminal.
+fn commits(cfg: SharedConfig, repo: PathBuf) -> Browse {
+    Browse::new("Commits", move || {
+        let (cfg, repo) = (cfg.clone(), repo.clone());
+        async move {
+            let r = repo.clone();
+            let lines = gio::spawn_blocking(move || {
+                git(&r, &["log", "-n", "50", "--format=%h\t%s\t%an\t%ar"])
+            })
+            .await
+            .unwrap_or_default();
+            lines
+                .iter()
+                .filter_map(|line| {
+                    let mut f = line.splitn(4, '\t');
+                    let hash = f.next()?.to_string();
+                    let subject = f.next()?.to_string();
+                    let author = f.next().unwrap_or("").to_string();
+                    let when = f.next().unwrap_or("").to_string();
+                    Some(Item {
+                        id: format!("commit:{}:{hash}", repo.display()),
+                        title: subject,
+                        subtitle: Some(format!("{hash} · {author}, {when}")),
+                        icon: Icon::Named("document-edit-symbolic".into()),
+                        score: 1,
+                        actions: vec![
+                            Action {
+                                label: "Show".into(),
+                                kind: ActionKind::Command(in_terminal(
+                                    &cfg,
+                                    &repo,
+                                    &format!("git show {hash}"),
+                                )),
+                            },
+                            Action {
+                                label: "Copy hash".into(),
+                                kind: ActionKind::CopyText(hash),
+                            },
+                        ],
+                    })
+                })
+                .collect()
+        }
+    })
+}
+
+/// One folder, folders first. Folders browse further; files open.
+fn folder(cfg: SharedConfig, dir: PathBuf) -> Browse {
+    let title = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/".into());
+    Browse::new(title, move || {
+        let (cfg, dir) = (cfg.clone(), dir.clone());
+        async move {
+            let d = dir.clone();
+            let entries = gio::spawn_blocking(move || list_dir(&d))
+                .await
+                .unwrap_or_default();
+            entries
+                .into_iter()
+                .map(|(path, is_dir)| folder_entry(&cfg, path, is_dir))
+                .collect()
+        }
+    })
+}
+
+/// (path, is_dir), folders first, each group sorted by name, hidden skipped.
+fn list_dir(dir: &Path) -> Vec<(PathBuf, bool)> {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(PathBuf, bool)> = read
+        .flatten()
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .map(|e| {
+            let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+            (e.path(), is_dir)
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| a.0.file_name().cmp(&b.0.file_name()))
+    });
+    out
+}
+
+fn folder_entry(cfg: &SharedConfig, path: PathBuf, is_dir: bool) -> Item {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let shown = path.to_string_lossy().into_owned();
+    let uri = format!("file://{shown}");
+    let mut actions = Vec::new();
+    if is_dir {
+        actions.push(Action {
+            label: "Open".into(),
+            kind: ActionKind::Browse(folder(cfg.clone(), path.clone())),
+        });
+        actions.push(Action {
+            label: "Open folder".into(),
+            kind: ActionKind::OpenUri(uri),
+        });
+        actions.push(Action {
+            label: "Open terminal".into(),
+            kind: ActionKind::Command(cfg.borrow().terminal_command(&shown, &[])),
+        });
+    } else {
+        actions.push(Action {
+            label: "Open".into(),
+            kind: ActionKind::OpenUri(uri),
+        });
+        actions.push(Action {
+            label: "Open in editor".into(),
+            kind: ActionKind::Command(cfg.borrow().editor_command(&shown)),
+        });
+    }
+    actions.push(Action {
+        label: "Copy path".into(),
+        kind: ActionKind::CopyText(shown.clone()),
+    });
+    let icon = if is_dir {
+        Icon::Named("folder-symbolic".into())
+    } else {
+        let (kind, _) = gio::content_type_guess(Some(&path), None);
+        Icon::GIcon(gio::content_type_get_icon(&kind))
+    };
+    Item {
+        id: format!("file:{shown}"),
+        title: name,
+        subtitle: Some(config::abbreviate_home(&path)),
+        icon,
+        score: 1,
+        actions,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    fn cfg() -> SharedConfig {
+        std::rc::Rc::new(RefCell::new(Config::default()))
+    }
+
+    #[test]
+    fn folders_first_then_files_by_name() {
+        let entries = list_dir(&repo_root().join("crates/parsec"));
+        let names: Vec<String> = entries
+            .iter()
+            .map(|(p, d)| {
+                format!(
+                    "{}{}",
+                    p.file_name().unwrap().to_string_lossy(),
+                    if *d { "/" } else { "" }
+                )
+            })
+            .collect();
+        assert_eq!(names, ["data/", "src/", "tests/", "Cargo.toml"]);
+    }
+
+    #[test]
+    fn branches_list_marks_the_current_one() {
+        let items = glib::MainContext::new().block_on((branches(cfg(), repo_root()).load)());
+        assert!(!items.is_empty());
+        let current: Vec<&Item> = items
+            .iter()
+            .filter(|i| {
+                i.subtitle
+                    .as_deref()
+                    .is_some_and(|s| s.starts_with("Current"))
+            })
+            .collect();
+        assert_eq!(current.len(), 1);
+        assert_eq!(current[0].actions[0].label, "Switch");
+        assert!(matches!(current[0].actions[0].kind, ActionKind::Command(_)));
+    }
+
+    #[test]
+    fn folder_browse_nests() {
+        let items = glib::MainContext::new().block_on((folder(cfg(), repo_root()).load)());
+        let crates = items.iter().find(|i| i.title == "crates").unwrap();
+        assert!(matches!(crates.actions[0].kind, ActionKind::Browse(_)));
+        let readme = items.iter().find(|i| i.title == "README.md").unwrap();
+        assert!(matches!(readme.actions[0].kind, ActionKind::OpenUri(_)));
     }
 }
