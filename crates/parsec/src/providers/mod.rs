@@ -11,6 +11,7 @@ pub mod plugin_host;
 pub mod processes;
 pub mod projects;
 pub mod shell;
+pub mod shell_history;
 pub mod shortcuts;
 pub mod sys;
 pub mod system;
@@ -27,7 +28,7 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(apps::AppsProvider::new()),
         Box::new(windows::WindowsProvider::new(cfg.clone())),
         Box::new(projects::ProjectsProvider::new(cfg.clone())),
-        Box::new(shell::ShellProvider::new(cfg.clone())),
+        Box::new(shell::ShellProvider::new(cfg.clone(), daemon)),
         Box::new(github::GithubRepos::new(cfg.clone())),
         Box::new(github::GithubPrs::new(cfg.clone())),
         Box::new(clipboard::ClipboardProvider::new(cfg.clone(), daemon)),

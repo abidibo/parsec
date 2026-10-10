@@ -33,6 +33,27 @@ pub struct Config {
     pub files: Files,
     pub appearance: Appearance,
     pub shell: Shell,
+    pub history: History,
+}
+
+/// Command history shown under the `$` verb.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct History {
+    /// List past commands from your shells and from Parsec itself.
+    pub enabled: bool,
+    /// History files to read, "~" allowed. Empty = $HISTFILE plus the
+    /// default zsh, bash and fish files that exist.
+    pub files: Vec<String>,
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            files: Vec::new(),
+        }
+    }
 }
 
 /// The GNOME Shell extension (window switching, direct paste, native
@@ -300,6 +321,7 @@ impl Default for Config {
             files: Files::default(),
             appearance: Appearance::default(),
             shell: Shell::default(),
+            history: History::default(),
         }
     }
 }
@@ -471,6 +493,14 @@ theme = {theme}
 # Parsec's violet. Or a hex colour like #ff7a59.
 accent = {accent}
 
+[history]
+# Under "$": list past commands from zsh, bash, fish and Parsec itself.
+enabled = {hist_enabled}
+# History files to read, "~" allowed. Empty = $HISTFILE and the default
+# files of each shell, whichever exist. Shells write these at their own
+# pace (often at exit); Parsec's own runs are recorded immediately.
+files = {hist_files}
+
 [shell]
 # Use the GNOME Shell extension when it is installed (windows, paste,
 # clipboard). Install it from Settings › Launcher or `parsec extension install`.
@@ -512,6 +542,8 @@ disabled = {plugins_disabled}
             v_system = toml_str(&self.verbs.system),
             v_processes = toml_str(&self.verbs.processes),
             shell_ext = self.shell.extension,
+            hist_enabled = self.history.enabled,
+            hist_files = toml_array(&self.history.files),
             files_roots = toml_array(&self.files.roots),
             files_exclude = toml_array(&self.files.exclude),
             files_hidden = self.files.hidden,
@@ -641,6 +673,7 @@ mod tests {
             github: Github::default(),
             clipboard: Clipboard::default(),
             shell: Shell::default(),
+            history: History::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),

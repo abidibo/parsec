@@ -102,6 +102,13 @@ Target: GNOME 46+, Wayland.
   drill-down. `ps` verb: own processes from /proc, lifetime CPU share, RSS,
   SIGTERM on Enter. The hotkey question is closed; see 2026-10-10 above.
 
+- 2026-10-10: shell history under `$`. Parsers for zsh (extended and
+  plain, backslash continuations), bash (`#ts` lines) and fish (YAML-ish
+  blocks); files detected from $HISTFILE and defaults, merged with Parsec's
+  own run log (written on every run, 0600). No file monitor: the index
+  stats its sources on each query and reparses only when an mtime moved;
+  the daemon pre-warms it at startup. Frecency ids are hashed.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

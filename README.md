@@ -121,7 +121,7 @@ narrows the search to one of them.
 |---|---|
 | `fire` | applications, fuzzy matched, ranked by how often and how recently you pick them |
 | `myproj` | git repositories under your project folders |
-| `$ ls -la` | a shell command: runs in a terminal that stays open |
+| `$ ls -la` | a shell command: runs in a terminal that stays open; `$` alone lists your command history |
 | `gh name` | your GitHub repositories |
 | `pr` | your open pull requests |
 | `cb text` | clipboard history |
@@ -152,6 +152,26 @@ Keys:
 Opening the launcher with nothing typed shows the things you have picked
 before. Word verbs need a space (`gh foo`; `ghost` searches apps). Symbol
 verbs don't (`$ls`).
+
+### Shell runner and history
+
+`$ cmd` runs the command in your terminal and drops into a shell afterwards,
+so the output stays on screen; Tab runs it in the background or copies it.
+`$` alone lists your command history, newest first, and `$ text` matches
+against it while still offering the typed text as the first row. Enter on a
+history row runs it the same way. History comes from `~/.zsh_history`,
+`~/.bash_history`, fish's history file and `$HISTFILE`, whichever exist,
+plus everything run through Parsec itself. Duplicates collapse into one
+row with a count; commands shorter than three characters and `exit`,
+`clear` and friends are skipped.
+
+Files are re-read only when they change, checked when you type. Shells
+write their history at their own pace, often at exit, so the last few
+commands of a terminal that is still open may not show until it closes;
+`setopt INC_APPEND_HISTORY` in zsh or `PROMPT_COMMAND='history -a'` in
+bash makes them immediate. Parsec's own runs are recorded at once in
+`~/.local/share/parsec/shell_history.json`, mode 0600. Settings ›
+Providers › Shell history turns it off or points at other files.
 
 ### Projects
 
@@ -339,6 +359,10 @@ plocate = true
 [appearance]
 theme = "dark"         # dark | light | system
 accent = "system"      # system | "#rrggbb"
+
+[history]
+enabled = true         # command history under "$"
+files = []             # empty = $HISTFILE and the default zsh/bash/fish files
 
 [shell]
 extension = true       # use the Shell extension when it is running
@@ -543,7 +567,7 @@ crates/parsec/src
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
-│                    plugin host, system
+│                    shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```
 

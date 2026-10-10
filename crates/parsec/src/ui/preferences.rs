@@ -263,6 +263,53 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
     ));
     page.add(&clipboard);
 
+    let history = adw::PreferencesGroup::builder()
+        .title("Shell history")
+        .description(
+            "Past commands from zsh, bash, fish and Parsec itself, listed under the shell verb. \
+             Shells usually write their file when they exit, so very recent lines can lag.",
+        )
+        .build();
+    history.add(&switch_row(
+        "Show history",
+        "",
+        cfg.borrow().history.enabled,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.history.enabled = on)
+        ),
+    ));
+    let detected: Vec<String> = crate::providers::shell_history::detect_files()
+        .iter()
+        .map(|(p, _)| crate::config::abbreviate_home(p))
+        .collect();
+    history.add(&text_row(
+        "History files",
+        "Space-separated, empty = detected",
+        &cfg.borrow().history.files.join(" "),
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let files: Vec<String> = text.split_whitespace().map(String::from).collect();
+                edit(&cfg, |c| c.history.files = files);
+                true
+            }
+        ),
+    ));
+    let found = adw::ActionRow::builder()
+        .title("Detected")
+        .subtitle(if detected.is_empty() {
+            "No history files found".to_string()
+        } else {
+            detected.join(", ")
+        })
+        .build();
+    found.add_prefix(&gtk::Image::from_icon_name("document-open-recent-symbolic"));
+    history.add(&found);
+    page.add(&history);
+
     let files = adw::PreferencesGroup::builder()
         .title("Files")
         .description("Search by name through GNOME's Tracker index and plocate.")
