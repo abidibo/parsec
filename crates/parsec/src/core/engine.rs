@@ -271,9 +271,20 @@ fn run(kind: &ActionKind) -> Result<()> {
         ActionKind::CopySecret {
             text,
             clear_after_secs,
+        }
+        | ActionKind::PasteSecret {
+            text,
+            clear_after_secs,
         } => {
+            // Remember first: the Shell reports the clipboard change back to
+            // us, and the watcher must already know to skip it.
             secrets::remember(text);
-            copy_text(text)?;
+            let bridge = crate::gnome_shell::bridge();
+            if matches!(kind, ActionKind::PasteSecret { .. }) && bridge.is_active() {
+                bridge.paste(text)?;
+            } else {
+                copy_text(text)?;
+            }
             if *clear_after_secs > 0 {
                 schedule_clipboard_clear(text.clone(), *clear_after_secs);
             }

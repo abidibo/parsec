@@ -135,13 +135,31 @@ impl KeepassProvider {
 
     fn entry_item(&self, e: &Secret, score: u32) -> Item {
         let clear = self.cfg.borrow().keepass.clipboard_clear_secs;
-        let mut actions = vec![Action {
+        let mut actions = Vec::new();
+        // With the Shell extension, Enter types the password into the field
+        // you came from; the copy actions stay behind Tab.
+        if crate::gnome_shell::bridge().is_active() {
+            actions.push(Action {
+                label: "Paste password".into(),
+                kind: ActionKind::PasteSecret {
+                    text: e.password.clone(),
+                    clear_after_secs: clear,
+                },
+            });
+            if !e.username.is_empty() {
+                actions.push(Action {
+                    label: "Paste username".into(),
+                    kind: ActionKind::Paste(e.username.clone()),
+                });
+            }
+        }
+        actions.push(Action {
             label: "Copy password".into(),
             kind: ActionKind::CopySecret {
                 text: e.password.clone(),
                 clear_after_secs: clear,
             },
-        }];
+        });
         if !e.username.is_empty() {
             actions.push(Action {
                 label: "Copy username".into(),

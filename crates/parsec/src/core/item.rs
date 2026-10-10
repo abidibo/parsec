@@ -60,6 +60,12 @@ pub enum ActionKind {
     /// Type the text into the window that had focus, through the Shell
     /// extension; falls back to `CopyText` without it.
     Paste(String),
+    /// `Paste` for a secret: kept out of the history and cleared from the
+    /// clipboard afterwards, like `CopySecret`. Falls back to it.
+    PasteSecret {
+        text: String,
+        clear_after_secs: u64,
+    },
     OpenUri(String),
     /// Provider-side effect (pin, delete, ...). Runs on the main thread.
     Callback(Rc<dyn Fn() -> anyhow::Result<()>>),
@@ -104,6 +110,7 @@ impl std::fmt::Debug for ActionKind {
             Self::OpenUri(u) => write!(f, "OpenUri({u})"),
             Self::Callback(_) => write!(f, "Callback"),
             Self::CopySecret { .. } => write!(f, "CopySecret"),
+            Self::PasteSecret { .. } => write!(f, "PasteSecret"),
             Self::Prompt(p) => write!(f, "{p:?}"),
         }
     }

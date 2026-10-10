@@ -36,7 +36,8 @@ Target: GNOME 46+, Wayland.
 
 ## Backlog (v2+)
 
-- Shell extension: own the hotkey, paste KeePass passwords, window thumbnails
+- Shell extension: window thumbnails. The hotkey stays a GNOME custom
+  shortcut on purpose: one way to manage it is enough.
 - Image clipboard entries
 - Calculator, unit/currency conversion
 - Result actions on Tab (open folder, copy path, KDE Connect send, open in editor)
@@ -80,7 +81,7 @@ Target: GNOME 46+, Wayland.
   ActivateWindow, CloseWindow, Paste, GetClipboard, ClipboardChanged);
   `gnome_shell.rs` is the client, a per-process singleton with an
   `is_active()` every caller checks. New: windows provider (mixed into plain
-  queries, `win` verb), `Paste` action kind (clipboard entries, plugins),
+  queries, `win` verb), `Paste` and `PasteSecret` action kinds (clipboard entries, KeePass, plugins),
   clipboard watcher driven by the extension when present. The extension is
   embedded in the binary and written out by `parsec extension install` or the
   settings row; a logout loads it. Without it nothing changes.

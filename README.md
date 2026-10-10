@@ -228,7 +228,10 @@ Shortcuts live in `[[shortcuts]]` tables in the config file.
 
 `kp` shows *Unlock*. Enter turns the search box into a masked password field,
 Enter again unlocks. Entries then match on title, username and URL; Enter
-copies the password, Tab gives copy username and open URL. *Lock database*
+copies the password, Tab gives copy username and open URL. With the
+[Shell extension](#gnome-shell-extension) Enter pastes the password into
+the field you came from instead, and Tab adds *Paste username*; the
+password is still kept out of the history and cleared after the timeout. *Lock database*
 sits at the end of the list and auto-lock forgets the entries after ten
 minutes. Recycle bin entries are hidden. The database is read with the pure
 Rust `keepass` crate (KDBX 3 and 4, password and optional key file) and never
@@ -349,8 +352,8 @@ or Hyprland, nothing changes.
 What it gives you:
 
 - **Windows** as results, see [above](#windows).
-- **Paste**: clipboard entries and snippets land in the window you came
-  from. Parsec hides, the extension waits for focus to return, then types
+- **Paste**: clipboard entries, snippets and KeePass passwords land in the
+  window you came from. Parsec hides, the extension waits for focus to return, then types
   Ctrl+V, or Ctrl+Shift+V when that window is a terminal.
 - **Clipboard tracking without polling** on every GNOME version, and
   reliable "was it still there" checks before a copied password is cleared.
@@ -418,7 +421,8 @@ exactly one line on stdout:
 Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
 out of the clipboard history and cleared after 15 s), `run` an argv array,
 `paste` text (typed into the previous window with the Shell extension,
-copied without it), or `callback` with any JSON, which comes back to the
+copied without it), `paste_secret` text (the same with the `copy_secret`
+protections), or `callback` with any JSON, which comes back to the
 plugin in an `activate` message when the user picks it. The first action runs on Enter, the others
 are reachable with Tab. Items with no actions are informational.
 
