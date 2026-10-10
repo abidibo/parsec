@@ -95,6 +95,13 @@ Target: GNOME 46+, Wayland.
   are now one lazy loader each: docker details, KeePass groups, folder
   navigation from file results.
 
+- 2026-10-10: Alt+1…9 runs the nth result (badges appear while Alt is
+  held). `sys` verb: GSettings toggles read live, nmcli/bluetoothctl/wpctl
+  toggles probed off-thread, session commands via gnome-session-quit (it
+  confirms), screenshot via the Shell's D-Bus, settings panels as a
+  drill-down. `ps` verb: own processes from /proc, lifetime CPU share, RSS,
+  SIGTERM on Enter. The hotkey question is closed; see 2026-10-10 above.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

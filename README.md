@@ -133,6 +133,8 @@ narrows the search to one of them.
 | `dk name` | Docker containers: shell, logs, start, stop, restart |
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
+| `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
+| `ps name` | your processes, heaviest first: terminate, kill, watch |
 | `parsec` | Parsec's own entries: settings, quit |
 
 Keys:
@@ -142,6 +144,7 @@ Keys:
 | ↑ ↓ | move the selection |
 | Tab / Shift+Tab | cycle the selected row's actions; rows with several show a ⇥ mark |
 | Enter | run the action shown on the right |
+| Alt+1 … Alt+9 | run the nth result; hold Alt to see the numbers |
 | Esc | close, cancel a password prompt, or step out of a list |
 | ⌫ on an empty box | leave a keyword mode or step out of a list |
 | Ctrl+, | settings |
@@ -209,6 +212,23 @@ alongside everything else, so `fire` offers the Firefox window you already
 have next to a fresh launch. `win` on its own lists every window, most
 recent first; `win mail` filters. Enter switches to the window, changing
 workspace if needed; Tab offers *Close window*.
+
+### System controls
+
+`sys` lists toggles with their current state and one-shot commands. Enter on
+a toggle flips it: dark style, do not disturb, night light, Wi-Fi (`nmcli`),
+Bluetooth (`bluetoothctl`), speaker and microphone mute (`wpctl`). Commands:
+lock, suspend, log out, restart, power off (the last three go through
+GNOME's own confirmation dialog), empty trash, GNOME's screenshot tool, and
+*GNOME Settings*, whose Tab action opens a list of panels to drill into.
+Rows whose program is missing are not shown.
+
+### Processes
+
+`ps name` lists your own processes, highest CPU share first, with PID,
+memory and command line. Enter sends SIGTERM; Tab offers SIGKILL, *Watch*
+(`htop -p` or `top -p` in your terminal) and *Copy PID*. Matching prefers
+the process name over the command line.
 
 ### Infrastructure
 
@@ -306,6 +326,8 @@ ssh = "ssh"
 docker = "dk"
 services = "svc"
 windows = "win"
+system = "sys"
+processes = "ps"
 
 [files]
 roots = ["~"]
@@ -520,7 +542,8 @@ crates/parsec/src
 ├── gnome_shell.rs   the Shell extension: D-Bus bridge, install, status
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
-│                    files, infra (ssh, docker, services), windows, plugin host, system
+│                    files, infra (ssh, docker, services), windows, sys, processes,
+│                    plugin host, system
 └── ui/              launcher window, preferences window
 ```
 

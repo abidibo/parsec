@@ -216,6 +216,8 @@ pub struct Verbs {
     pub docker: String,
     pub services: String,
     pub windows: String,
+    pub system: String,
+    pub processes: String,
 }
 
 impl Default for Clipboard {
@@ -242,6 +244,8 @@ impl Default for Verbs {
             docker: "dk".into(),
             services: "svc".into(),
             windows: "win".into(),
+            system: "sys".into(),
+            processes: "ps".into(),
         }
     }
 }
@@ -445,6 +449,8 @@ ssh = {v_ssh}
 docker = {v_docker}
 services = {v_services}
 windows = {v_windows}
+system = {v_system}
+processes = {v_processes}
 
 [files]
 # Only show files under these folders ("~" allowed). Empty = anywhere.
@@ -503,6 +509,8 @@ disabled = {plugins_disabled}
             v_docker = toml_str(&self.verbs.docker),
             v_services = toml_str(&self.verbs.services),
             v_windows = toml_str(&self.verbs.windows),
+            v_system = toml_str(&self.verbs.system),
+            v_processes = toml_str(&self.verbs.processes),
             shell_ext = self.shell.extension,
             files_roots = toml_array(&self.files.roots),
             files_exclude = toml_array(&self.files.exclude),

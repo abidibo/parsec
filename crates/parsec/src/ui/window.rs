@@ -210,6 +210,20 @@ window.parsec {
     padding: 1px 4px;
     margin-left: 8px;
 }
+.parsec-num {
+    font-family: monospace;
+    font-size: 9px;
+    color: @parsec_dim;
+    background-color: @parsec_key_bg;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-right: 8px;
+    opacity: 0;
+    transition: opacity 80ms ease-out;
+}
+.parsec-results.show-numbers .parsec-num {
+    opacity: 1;
+}
 .parsec-results row:selected .parsec-action-key {
     color: @parsec_fg;
     background-color: alpha(@parsec_accent, 0.35);
@@ -288,6 +302,7 @@ const HINTS_SEARCH: &[(&str, &str)] = &[
     ("↑↓", "navigate"),
     ("⇥", "actions"),
     ("↵", "run"),
+    ("alt+1…9", "run nth"),
     ("esc", "close"),
 ];
 const HINTS_PROMPT: &[(&str, &str)] = &[("↵", "submit"), ("esc", "cancel")];
@@ -586,6 +601,25 @@ impl LauncherWindow {
                         this.search(&verb);
                         glib::Propagation::Stop
                     }
+                    Key::Alt_L | Key::Alt_R => {
+                        this.list.add_css_class("show-numbers");
+                        glib::Propagation::Proceed
+                    }
+                    Key::_1
+                    | Key::_2
+                    | Key::_3
+                    | Key::_4
+                    | Key::_5
+                    | Key::_6
+                    | Key::_7
+                    | Key::_8
+                    | Key::_9
+                        if state.contains(ModifierType::ALT_MASK) =>
+                    {
+                        let n = key.to_unicode().and_then(|c| c.to_digit(10)).unwrap_or(0);
+                        this.activate_nth(n as usize);
+                        glib::Propagation::Stop
+                    }
                     Key::Down => {
                         this.move_selection(1);
                         glib::Propagation::Stop
@@ -603,6 +637,16 @@ impl LauncherWindow {
                         glib::Propagation::Stop
                     }
                     _ => glib::Propagation::Proceed,
+                }
+            }
+        ));
+        keys.connect_key_released(glib::clone!(
+            #[strong(rename_to = this)]
+            self,
+            move |_, key, _, _| {
+                use gtk::gdk::Key;
+                if matches!(key, Key::Alt_L | Key::Alt_R) {
+                    this.list.remove_css_class("show-numbers");
                 }
             }
         ));
@@ -658,6 +702,7 @@ impl LauncherWindow {
         if self.prompt.borrow().is_some() {
             self.leave_prompt(false);
         }
+        self.list.remove_css_class("show-numbers");
         self.window.set_visible(false);
     }
 
@@ -738,8 +783,8 @@ impl LauncherWindow {
         }
         *self.results.borrow_mut() = hits.clone();
         let accent = self.accent_hex();
-        for hit in &hits {
-            self.list.append(&row_for(hit, &accent));
+        for (i, hit) in hits.iter().enumerate() {
+            self.list.append(&row_for(hit, i, &accent));
         }
         self.list.invalidate_headers();
         if let Some(first) = self.list.row_at_index(0) {
@@ -787,6 +832,17 @@ impl LauncherWindow {
         *slot = (*slot as i32 + delta).rem_euclid(n) as usize;
         let label = self.results.borrow()[idx].item.actions[*slot].label.clone();
         set_action_label(&row, &label);
+    }
+
+    /// Alt+digit: run the default action of result `n` (1-based).
+    fn activate_nth(&self, n: usize) {
+        if n == 0 || self.prompt.borrow().is_some() {
+            return;
+        }
+        if let Some(row) = self.list.row_at_index(n as i32 - 1) {
+            self.list.select_row(Some(&row));
+            self.activate_selected();
+        }
     }
 
     fn activate_selected(&self) {
@@ -1064,7 +1120,7 @@ fn title_markup(title: &str, highlight: &[u32], accent: &str) -> String {
     out
 }
 
-fn row_for(hit: &Hit, accent: &str) -> gtk::ListBoxRow {
+fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
     let item = &hit.item;
     let symbolic = !matches!(item.icon, Icon::GIcon(_) | Icon::Path(_));
     let image = gtk::Image::builder()
@@ -1124,6 +1180,15 @@ fn row_for(hit: &Hit, accent: &str) -> gtk::ListBoxRow {
         .build();
     let trailing = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     trailing.set_valign(gtk::Align::Center);
+    if index < 9 {
+        // Shown while Alt is held: Alt+digit runs this row.
+        trailing.append(
+            &gtk::Label::builder()
+                .label((index + 1).to_string())
+                .css_classes(["parsec-num"])
+                .build(),
+        );
+    }
     trailing.append(&action);
     if matches!(
         item.actions.first().map(|a| &a.kind),
@@ -1155,16 +1220,20 @@ fn row_for(hit: &Hit, accent: &str) -> gtk::ListBoxRow {
 }
 
 fn set_action_label(row: &gtk::ListBoxRow, text: &str) {
-    // row > hbox > [tile, texts, trailing > [action, key?]]
+    // row > hbox > [tile, texts, trailing > [num?, action, marks...]]
     let Some(hbox) = row.child() else { return };
     let Some(trailing) = hbox.last_child() else {
         return;
     };
-    let Some(action) = trailing.first_child() else {
-        return;
-    };
-    if let Ok(label) = action.downcast::<gtk::Label>() {
-        label.set_label(text);
+    let mut child = trailing.first_child();
+    while let Some(w) = child {
+        if w.has_css_class("parsec-action") {
+            if let Ok(label) = w.downcast::<gtk::Label>() {
+                label.set_label(text);
+            }
+            return;
+        }
+        child = w.next_sibling();
     }
 }
 

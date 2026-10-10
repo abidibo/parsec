@@ -440,6 +440,16 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             v.windows,
             Box::new(|c: &mut Config, s: String| c.verbs.windows = s),
         ),
+        (
+            "System controls",
+            v.system,
+            Box::new(|c: &mut Config, s: String| c.verbs.system = s),
+        ),
+        (
+            "Processes",
+            v.processes,
+            Box::new(|c: &mut Config, s: String| c.verbs.processes = s),
+        ),
     ] {
         let set = Rc::new(set);
         verbs.add(&text_row(
