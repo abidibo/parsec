@@ -38,7 +38,17 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
             glib::spawn_future_local(async move { bridge.connect().await });
             register_actions(app, cfg.clone());
             let engine = Rc::new(Engine::new(providers::all(cfg.clone(), true)));
-            *window.borrow_mut() = Some(LauncherWindow::new(app, engine));
+            let launcher = LauncherWindow::new(app, engine);
+            crate::update::start(
+                cfg.clone(),
+                app,
+                glib::clone!(
+                    #[strong]
+                    launcher,
+                    move |u| launcher.set_update(u)
+                ),
+            );
+            *window.borrow_mut() = Some(launcher);
             crate::ui::theme::apply(&cfg);
             crate::ui::theme::watch(cfg);
             // Stay alive with the window hidden. The guard releases on drop,

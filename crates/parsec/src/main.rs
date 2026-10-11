@@ -8,6 +8,7 @@ mod gnome_shell;
 mod plugins;
 mod providers;
 mod ui;
+mod update;
 
 use gtk::prelude::*;
 
@@ -21,6 +22,10 @@ fn main() -> glib::ExitCode {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("parsec {}", brand::VERSION);
+        return glib::ExitCode::SUCCESS;
+    }
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
             "parsec - a personal GNOME launcher\n\n\
@@ -31,7 +36,8 @@ fn main() -> glib::ExitCode {
              parsec plugin list | install <zip|dir|git-url> | remove <id>\n  \
              parsec extension status | install | remove   (GNOME Shell extension)\n  \
              parsec --background  start the daemon without showing the window\n  \
-             parsec toggle        same as plain `parsec`, reads better in keybindings"
+             parsec toggle        same as plain `parsec`, reads better in keybindings\n  \
+             parsec --version     print the version"
         );
         return glib::ExitCode::SUCCESS;
     }

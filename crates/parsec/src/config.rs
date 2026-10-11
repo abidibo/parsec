@@ -34,6 +34,21 @@ pub struct Config {
     pub appearance: Appearance,
     pub shell: Shell,
     pub history: History,
+    pub updates: Updates,
+}
+
+/// Daily check for a newer release on GitHub.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Updates {
+    /// Ask GitHub for the latest tag once a day; nothing else is sent.
+    pub check: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { check: true }
+    }
 }
 
 /// Command history shown under the `$` verb.
@@ -322,6 +337,7 @@ impl Default for Config {
             appearance: Appearance::default(),
             shell: Shell::default(),
             history: History::default(),
+            updates: Updates::default(),
         }
     }
 }
@@ -506,6 +522,11 @@ files = {hist_files}
 # clipboard). Install it from Settings › Launcher or `parsec extension install`.
 extension = {shell_ext}
 
+[updates]
+# Once a day ask GitHub for the latest release tag and say so when there is
+# a newer one. Nothing but the version is sent. Dev builds never check.
+check = {updates_check}
+
 [plugins]
 # Installed plugins (see Settings › Plugins) that should stay off.
 disabled = {plugins_disabled}
@@ -542,6 +563,7 @@ disabled = {plugins_disabled}
             v_system = toml_str(&self.verbs.system),
             v_processes = toml_str(&self.verbs.processes),
             shell_ext = self.shell.extension,
+            updates_check = self.updates.check,
             hist_enabled = self.history.enabled,
             hist_files = toml_array(&self.history.files),
             files_roots = toml_array(&self.files.roots),
@@ -674,6 +696,7 @@ mod tests {
             clipboard: Clipboard::default(),
             shell: Shell::default(),
             history: History::default(),
+            updates: Updates::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),
             shortcuts: default_shortcuts(),

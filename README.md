@@ -135,7 +135,7 @@ narrows the search to one of them.
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
 | `ps name` | your processes, heaviest first: terminate, kill, watch |
-| `parsec` | Parsec's own entries: settings, quit |
+| `parsec` | Parsec's own entries: settings, quit, update when one is available |
 
 Keys:
 
@@ -301,6 +301,13 @@ written.
 Open the settings with the gear in the launcher's footer, Ctrl+, while the
 launcher is open, typing `parsec`, or `parsec settings` in a shell.
 
+Once a day Parsec asks GitHub for its latest release tag. When there is a
+newer one the gear in the footer turns accent coloured, `parsec` lists an
+*Update Parsec* entry that opens the releases page, the settings card links
+to it, and you get one desktop notification per version. Nothing but the
+version is sent. Turn it off in Settings › Launcher or with `[updates]
+check = false`. Builds without a release tag never check.
+
 The settings window edits `~/.config/parsec/config.toml`. Changes save
 immediately and the running daemon reloads them; the file is also fine to edit
 by hand. Every key has a comment in the file. With defaults filled in for this
@@ -366,6 +373,9 @@ files = []             # empty = $HISTFILE and the default zsh/bash/fish files
 
 [shell]
 extension = true       # use the Shell extension when it is running
+
+[updates]
+check = true           # daily check of the latest GitHub tag
 
 [[shortcuts]]
 name = "Google"
@@ -527,6 +537,7 @@ For example:
 parsec               start the daemon, or toggle the window if it already runs
 parsec --background  start the daemon without showing the window (autostart uses this)
 parsec toggle        same as plain parsec; reads better in a keybinding
+parsec --version     print the version (git tag, or the Cargo version when built from a tarball)
 parsec settings      open the settings window
 parsec plugin ...    list | install <zip|dir|git-url> | remove <id>
 parsec extension ... status | install | remove   (the GNOME Shell extension)

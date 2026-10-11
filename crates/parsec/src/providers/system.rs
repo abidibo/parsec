@@ -64,9 +64,30 @@ impl Provider for SystemProvider {
         if q.is_empty() {
             return Vec::new();
         }
-        ENTRIES
-            .iter()
-            .filter_map(|e| {
+        let update = crate::update::available().and_then(|u| {
+            let score = q
+                .score(&format!("Update Parsec to {}", u.latest))
+                .into_iter()
+                .chain(q.score_any(["update", "upgrade", "version", "parsec"]))
+                .max()?;
+            Some(Item {
+                id: "system:update".into(),
+                title: format!("Update Parsec to {}", u.latest),
+                subtitle: Some(format!(
+                    "You have {}. Pull and run scripts/install.sh, or open the releases page",
+                    u.current
+                )),
+                icon: Icon::Named("software-update-available-symbolic".into()),
+                score,
+                actions: vec![Action {
+                    label: "Releases".into(),
+                    kind: ActionKind::OpenUri(crate::update::RELEASES_URL.into()),
+                }],
+            })
+        });
+        update
+            .into_iter()
+            .chain(ENTRIES.iter().filter_map(|e| {
                 let score = q
                     .score(e.title)
                     .into_iter()
@@ -84,7 +105,7 @@ impl Provider for SystemProvider {
                         kind: app_action(e.action),
                     }],
                 })
-            })
+            }))
             .collect()
     }
 }

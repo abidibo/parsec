@@ -3,7 +3,8 @@
 use gtk::glib;
 
 pub const NAME: &str = "Parsec";
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// From `git describe` in a checkout, else the Cargo version (see build.rs).
+pub const VERSION: &str = env!("PARSEC_VERSION");
 pub const TAGLINE: &str = "A personal launcher for GNOME";
 pub const APP_ID: &str = "org.abidibo.Parsec";
 pub const LOGO_SVG: &[u8] = include_bytes!("../data/logo.svg");

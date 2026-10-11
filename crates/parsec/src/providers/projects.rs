@@ -429,7 +429,7 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(names, ["data/", "src/", "tests/", "Cargo.toml"]);
+        assert_eq!(names, ["data/", "src/", "tests/", "Cargo.toml", "build.rs"]);
     }
 
     #[test]

@@ -291,6 +291,9 @@ window.parsec {
 .parsec-gear:hover {
     color: @parsec_fg;
 }
+.parsec-gear.has-update {
+    color: @parsec_accent;
+}
 .parsec-brand {
     color: @parsec_dim;
     font-size: 11px;
@@ -333,6 +336,7 @@ pub struct LauncherWindow {
     empty: gtk::Label,
     welcome: gtk::Box,
     hints: gtk::Box,
+    gear: gtk::Button,
     engine: Rc<Engine>,
     results: Rc<RefCell<Vec<Hit>>>,
     /// Selected action per result row, cycled with Tab.
@@ -429,6 +433,11 @@ impl LauncherWindow {
         right.append(&gear);
         let brand = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         brand.add_css_class("parsec-brand");
+        brand.set_tooltip_text(Some(&format!(
+            "{} {}",
+            crate::brand::NAME,
+            crate::brand::VERSION
+        )));
         brand.append(&crate::brand::logo(14));
         brand.append(&gtk::Label::new(Some(crate::brand::NAME)));
         right.append(&brand);
@@ -482,6 +491,7 @@ impl LauncherWindow {
             empty,
             welcome,
             hints,
+            gear,
             engine,
             results: Rc::new(RefCell::new(Vec::new())),
             action_idx: Rc::new(RefCell::new(Vec::new())),
@@ -1021,6 +1031,15 @@ impl LauncherWindow {
     }
 
     // ------------------------------------------------------------ chrome
+
+    /// Tint the gear and say why in its tooltip.
+    pub fn set_update(&self, update: &crate::update::Update) {
+        self.gear.add_css_class("has-update");
+        self.gear.set_tooltip_text(Some(&format!(
+            "Parsec {} is available (you have {}). Settings: Ctrl+,",
+            update.latest, update.current
+        )));
+    }
 
     fn set_hints(&self, hints: &[(&str, &str)]) {
         while let Some(c) = self.hints.first_child() {

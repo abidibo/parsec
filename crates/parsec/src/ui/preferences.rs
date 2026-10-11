@@ -557,6 +557,14 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
             .css_classes(["dim-label", "caption"])
             .build(),
     );
+    if let Some(u) = crate::update::available() {
+        let link = gtk::LinkButton::builder()
+            .label(format!("{} is available", u.latest))
+            .uri(crate::update::RELEASES_URL)
+            .css_classes(["caption"])
+            .build();
+        card.append(&link);
+    }
     about.add(&card);
     page.add(&about);
 
@@ -573,6 +581,17 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
         },
     );
     startup.add(&autostart);
+    let check = cfg.borrow().updates.check;
+    startup.add(&switch_row(
+        "Check for updates",
+        "Once a day, asks GitHub for the latest release tag; nothing else is sent",
+        check,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.updates.check = on)
+        ),
+    ));
     page.add(&startup);
 
     let hotkey = adw::PreferencesGroup::builder()
