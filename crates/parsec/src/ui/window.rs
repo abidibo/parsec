@@ -265,21 +265,21 @@ window.parsec {
 
 /* footer */
 .parsec-footer {
-    padding: 8px 18px 10px 20px;
+    padding: 10px 18px 12px 20px;
     font-size: 11px;
     color: @parsec_dim;
 }
 .parsec-key {
     font-family: monospace;
     font-size: 10px;
-    color: @parsec_fg;
-    background-color: @parsec_key_bg;
+    color: @parsec_dim;
+    background-color: alpha(@parsec_fg, 0.06);
     border-radius: 4px;
     padding: 1px 5px;
-    margin-right: 5px;
+    margin-right: 6px;
 }
 .parsec-hint {
-    margin-right: 18px;
+    margin-right: 22px;
 }
 .parsec-gear {
     min-height: 0;
@@ -308,6 +308,9 @@ const HINTS_SEARCH: &[(&str, &str)] = &[
 const HINTS_PROMPT: &[(&str, &str)] = &[("↵", "submit"), ("esc", "cancel")];
 const HINTS_CHIP: &[(&str, &str)] = &[("⌫", "leave mode"), ("↵", "run"), ("esc", "close")];
 const HINTS_BROWSE: &[(&str, &str)] = &[("⌫", "back"), ("⇥", "actions"), ("↵", "run")];
+/// With results on screen the footer stays quiet: only the two keys that
+/// are not obvious. The full tables show on empty states.
+const HINTS_RESULTS: &[(&str, &str)] = &[("⇥", "actions"), ("↵", "run")];
 
 /// One drilled-into list. The stack of these is the breadcrumb.
 struct Level {
@@ -731,13 +734,11 @@ impl LauncherWindow {
                 self.chip.set_visible(true);
                 *self.verb.borrow_mut() = Some(verb);
                 self.entry.set_placeholder_text(Some("Type…"));
-                self.set_hints(HINTS_CHIP);
             }
             None => {
                 self.chip.set_visible(false);
                 *self.verb.borrow_mut() = None;
                 self.entry.set_placeholder_text(Some(PLACEHOLDER));
-                self.set_hints(HINTS_SEARCH);
             }
         }
     }
@@ -797,8 +798,17 @@ impl LauncherWindow {
         self.welcome.set_visible(
             none && query_empty && !in_prompt && self.verb.borrow().is_none() && !self.in_browse(),
         );
-        // Hints only when there is nothing else to look at.
-        self.hints.set_visible(none || in_prompt);
+        self.set_hints(if !none {
+            HINTS_RESULTS
+        } else if in_prompt {
+            HINTS_PROMPT
+        } else if self.in_browse() {
+            HINTS_BROWSE
+        } else if self.verb.borrow().is_some() {
+            HINTS_CHIP
+        } else {
+            HINTS_SEARCH
+        });
         *self.action_idx.borrow_mut() = vec![0; hits.len()];
     }
 
@@ -901,7 +911,6 @@ impl LauncherWindow {
         self.chip.set_label(&browse.title);
         self.chip.set_visible(true);
         self.entry.set_placeholder_text(Some("Filter…"));
-        self.set_hints(HINTS_BROWSE);
         self.set_entry_text("");
         self.render(Vec::new(), true);
 
@@ -960,7 +969,6 @@ impl LauncherWindow {
         self.entry.add_css_class("prompt");
         *self.prompt.borrow_mut() = Some(prompt);
         self.set_entry_text("");
-        self.set_hints(HINTS_PROMPT);
         self.render(Vec::new(), true);
         self.entry.grab_focus();
     }
