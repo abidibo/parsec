@@ -1,5 +1,6 @@
-//! Daily check for a newer release on GitHub. Reads the tag list, compares
-//! with the baked-in version, and if there is something newer tells the
+//! Daily check for a newer release on GitHub. Reads the latest release,
+//! not the tags, so it never announces a version whose binaries are still
+//! building. Compares with the baked-in version, and if there is something newer tells the
 //! launcher (accent gear, entry under the `parsec` verb) and sends one
 //! desktop notification per version. Off with `[updates] check = false`.
 //! Dev builds (anything but a bare x.y.z) never check.
@@ -13,8 +14,11 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const TAGS_URL: &str = "https://api.github.com/repos/abidibo/parsec/tags";
+const LATEST_URL: &str = "https://api.github.com/repos/abidibo/parsec/releases/latest";
 pub const RELEASES_URL: &str = "https://github.com/abidibo/parsec/releases";
+/// Installs or updates to the latest release.
+pub const INSTALL_COMMAND: &str =
+    "curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash";
 const FIRST_DELAY: u32 = 30;
 const EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -86,28 +90,27 @@ pub fn parse(v: &str) -> Option<(u64, u64, u64)> {
 }
 
 #[derive(Deserialize)]
-struct Tag {
-    name: String,
+struct Release {
+    tag_name: String,
 }
 
-/// Highest semver tag on GitHub. Blocking; run it off the main loop.
+/// The latest GitHub release. Blocking; run it off the main loop.
 fn fetch_latest() -> anyhow::Result<String> {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(10)))
         .user_agent(format!("parsec/{}", crate::brand::VERSION))
         .build()
         .new_agent();
-    let tags: Vec<Tag> = agent
-        .get(TAGS_URL)
+    let release: Release = agent
+        .get(LATEST_URL)
         .header("Accept", "application/vnd.github+json")
         .call()?
         .body_mut()
         .read_json()?;
-    tags.iter()
-        .filter_map(|t| parse(&t.name).map(|v| (v, t.name.trim_start_matches('v').to_string())))
-        .max()
-        .map(|(_, name)| name)
-        .ok_or_else(|| anyhow::anyhow!("no version tags"))
+    let tag = release.tag_name.trim_start_matches('v');
+    parse(tag)
+        .map(|_| tag.to_string())
+        .ok_or_else(|| anyhow::anyhow!("latest release is not a version: {tag}"))
 }
 
 /// Start the periodic check. `on_found` runs on the main thread each time
@@ -169,7 +172,7 @@ pub fn start(cfg: SharedConfig, app: &adw::Application, on_found: impl Fn(&Updat
 fn notify(app: &adw::Application, u: &Update) {
     let n = gio::Notification::new(&format!("Parsec {} is available", u.latest));
     n.set_body(Some(&format!(
-        "You have {}. Pull and run scripts/install.sh, or see the releases page.",
+        "You have {}. Run the install command again to update, or see the releases page.",
         u.current
     )));
     app.send_notification(Some("update"), &n);
@@ -179,11 +182,11 @@ fn notify(app: &adw::Application, u: &Update) {
 mod tests {
     use super::parse;
 
-    /// Hits GitHub: `cargo test -- --ignored fetches_latest_tag`.
+    /// Hits GitHub: `cargo test -- --ignored fetches_latest_release`.
     #[test]
     #[ignore]
-    fn fetches_latest_tag() {
-        let latest = super::fetch_latest().expect("tags from GitHub");
+    fn fetches_latest_release() {
+        let latest = super::fetch_latest().expect("latest release from GitHub");
         assert!(parse(&latest).is_some(), "not a release tag: {latest}");
     }
 

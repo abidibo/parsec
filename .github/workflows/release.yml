@@ -1,0 +1,81 @@
+# Push a tag like 1.2.0 to build Linux binaries and publish them as a GitHub release.
+# The tag must match the version in Cargo.toml, without a "v" prefix.
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Built on the oldest supported distribution, so the binary runs on it and anything newer.
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev
+
+      - name: Install Rust
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+          fi
+          "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal
+          "$HOME/.cargo/bin/rustup" default stable
+
+      - name: Build
+        # The checkout is shallow and has no tags, so git describe would give a bare hash and
+        # the binary would count as a dev build, with its update check off.
+        env:
+          PARSEC_VERSION: ${{ github.ref_name }}
+        run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          name="parsec-${{ matrix.arch }}-linux"
+          mkdir "$name"
+          cp target/release/parsec data/org.abidibo.Parsec.desktop data/org.abidibo.Parsec.svg "$name/"
+          "$name/parsec" --version | grep -Fx "parsec $GITHUB_REF_NAME"
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" >"$name.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: parsec-${{ matrix.arch }}
+          path: parsec-${{ matrix.arch }}-linux.tar.gz*
+
+  release:
+    needs: build
+    # Pinned: ubuntu-latest moves to a new release on its own schedule.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Release $GITHUB_REF_NAME" --generate-notes parsec-*

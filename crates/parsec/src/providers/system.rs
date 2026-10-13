@@ -74,15 +74,21 @@ impl Provider for SystemProvider {
                 id: "system:update".into(),
                 title: format!("Update Parsec to {}", u.latest),
                 subtitle: Some(format!(
-                    "You have {}. Pull and run scripts/install.sh, or open the releases page",
+                    "You have {}. Enter copies the install command; run it in a terminal",
                     u.current
                 )),
                 icon: Icon::Named("software-update-available-symbolic".into()),
                 score,
-                actions: vec![Action {
-                    label: "Releases".into(),
-                    kind: ActionKind::OpenUri(crate::update::RELEASES_URL.into()),
-                }],
+                actions: vec![
+                    Action {
+                        label: "Copy install command".into(),
+                        kind: ActionKind::CopyText(crate::update::INSTALL_COMMAND.into()),
+                    },
+                    Action {
+                        label: "Releases".into(),
+                        kind: ActionKind::OpenUri(crate::update::RELEASES_URL.into()),
+                    },
+                ],
             })
         });
         update

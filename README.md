@@ -46,7 +46,7 @@ Runtime:
 | `gh` (GitHub CLI), logged in | the `gh` and `pr` verbs | optional |
 | the Parsec Shell extension | window switching, paste into the previous window, event-driven clipboard on any GNOME (see [below](#gnome-shell-extension)) | optional |
 
-Build:
+Build, only when no prebuilt binary fits your system (the installer handles it):
 
 | Distribution | Packages |
 |---|---|
@@ -56,40 +56,76 @@ Build:
 
 plus a Rust toolchain, 1.82 or newer, from <https://rustup.rs>.
 
-Ubuntu 24.04 example, everything in one go:
-
-```sh
-sudo apt install build-essential pkg-config libgtk-4-dev libadwaita-1-dev wl-clipboard xclip plocate gh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
 ## Install
 
 ```sh
-git clone https://github.com/abidibo/parsec.git
-cd parsec
-scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash
 ```
 
 The script:
 
-1. builds a release binary
-2. installs it to `~/.local/bin/parsec` and the icon to your icon theme
-3. adds an autostart entry so the daemon starts at login
-4. binds **Ctrl+Space** to toggle the launcher, as a GNOME custom shortcut
-5. starts the daemon
+1. installs GTK, libadwaita and `wl-clipboard` with `apt`, `dnf` or `pacman` if they are
+   missing. It asks for your password only then
+2. downloads the prebuilt binary from the [latest release](https://github.com/abidibo/parsec/releases/latest)
+   for your processor, x86_64 or ARM64, and checks its SHA-256 checksum
+3. installs it to `~/.local/bin/parsec` and the icon to your icon theme
+4. adds an autostart entry so the daemon starts at login
+5. binds **Ctrl+Space** to toggle the launcher, as a GNOME custom shortcut, unless that
+   shortcut is already taken
+6. (re)starts the daemon
 
-Pick another key with `PARSEC_HOTKEY='<Super>space' scripts/install.sh`, or
-change it later in GNOME Settings › Keyboard › Custom Shortcuts. Add
-`PARSEC_EXTENSION=1` to also install the [Shell extension](#gnome-shell-extension).
+It takes a few seconds and needs no Rust. If no binary fits your system, the script builds
+Parsec from source instead. It installs the build packages and, if your Rust is missing or
+older than 1.82, installs Rust with [rustup](https://rustup.rs). If you already use rustup, it
+leaves your default toolchain alone.
+
+The optional tools in [Requirements](#requirements) (`xclip`, `plocate`, `gh`...) are not
+installed for you. On Ubuntu: `sudo apt install xclip plocate gh`.
+
+Run the same command again to update; it also refreshes the Shell extension if you use it.
+Settings:
+
+| Variable | Effect |
+|---|---|
+| `PARSEC_HOTKEY='<Super>space'` | Bind another key, or pass an empty value to skip the shortcut. |
+| `PARSEC_EXTENSION=1` | Also install the [Shell extension](#gnome-shell-extension). |
+| `PARSEC_VERSION=1.1.0` | Install a specific release instead of the latest. |
+| `PARSEC_FROM_SOURCE=1` | Build from source even when a binary is available. |
+
+For example:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | PARSEC_EXTENSION=1 bash
+```
+
+You can change the shortcut later in GNOME Settings › Keyboard › Custom Shortcuts.
+
+From a clone, `./install.sh` always builds and installs that checkout.
 
 `~/.local/bin` must be on your `PATH` for `parsec` to work from a shell; the
 hotkey uses the full path and works regardless.
 
-To uninstall: delete `~/.local/bin/parsec`, the two desktop files named
-`org.abidibo.Parsec.desktop` under `~/.local/share/applications` and
-`~/.config/autostart`, the custom shortcut, the extension with `parsec extension remove`, and
-optionally `~/.config/parsec` and `~/.local/share/parsec`.
+To uninstall:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash -s -- --uninstall
+```
+
+It stops the daemon and removes the binary, the desktop and autostart entries, the icon, the
+shortcut and the Shell extension. Your settings in `~/.config/parsec` and data in
+`~/.local/share/parsec` stay; delete them by hand if you want a clean slate.
+
+### Releasing
+
+Bump `version` in `Cargo.toml`, commit, then tag and push without a `v` prefix:
+
+```sh
+git tag 1.1.0 && git push origin 1.1.0
+```
+
+The [release workflow](.github/workflows/release.yml) builds x86_64 and ARM64 binaries on
+Ubuntu 24.04 and publishes them with their checksums. It fails if the tag and `Cargo.toml`
+disagree.
 
 ## First run
 
@@ -301,9 +337,10 @@ written.
 Open the settings with the gear in the launcher's footer, Ctrl+, while the
 launcher is open, typing `parsec`, or `parsec settings` in a shell.
 
-Once a day Parsec asks GitHub for its latest release tag. When there is a
+Once a day Parsec asks GitHub for its latest release. When there is a
 newer one the gear in the footer turns accent coloured, `parsec` lists an
-*Update Parsec* entry that opens the releases page, the settings card links
+*Update Parsec* entry that copies the [install command](#install) (or opens
+the releases page), the settings card links
 to it, and you get one desktop notification per version. Nothing but the
 version is sent. Turn it off in Settings › Launcher or with `[updates]
 check = false`. Builds without a release tag never check.
@@ -409,7 +446,7 @@ results, Enter copies instead of pasting, and the clipboard is polled on
 GNOME 46 and 47.
 
 Install it from Settings › Launcher › *GNOME Shell extension*, with
-`PARSEC_EXTENSION=1 scripts/install.sh`, or from a shell:
+the installer's `PARSEC_EXTENSION=1`, or from a shell:
 
 ```sh
 parsec extension install     # copies the files and enables the extension
