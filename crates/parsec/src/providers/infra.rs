@@ -221,13 +221,99 @@ impl Provider for SshProvider {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct Container {
+pub struct Container {
     #[serde(rename = "ID")]
-    id: String,
-    names: String,
-    image: String,
-    state: String,
-    status: String,
+    pub id: String,
+    pub names: String,
+    pub image: String,
+    pub state: String,
+    pub status: String,
+    /// `127.0.0.1:5005->5005/tcp, 8089/tcp`; empty when stopped.
+    #[serde(default)]
+    pub ports: String,
+}
+
+/// `docker ps -a`, blocking. None when docker is missing or not running.
+pub fn list_containers() -> Option<Vec<Container>> {
+    let out = Command::new("docker")
+        .args(["ps", "-a", "--format", "{{json .}}"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Container>(l).ok())
+            .collect(),
+    )
+}
+
+/// Host TCP ports a container publishes, from its `Ports` column.
+/// Exposed-only ports (`5432/tcp`, no `->`) are not reachable from here.
+pub fn published_ports(ports: &str) -> Vec<u16> {
+    let mut out: Vec<u16> = ports
+        .split(", ")
+        .filter_map(|m| {
+            let (host, inner) = m.split_once("->")?;
+            if !inner.ends_with("/tcp") {
+                return None;
+            }
+            let (_, range) = host.rsplit_once(':')?;
+            let (from, to) = range.split_once('-').unwrap_or((range, range));
+            Some(from.parse::<u16>().ok()?..=to.parse::<u16>().ok()?)
+        })
+        .flatten()
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Shell (when running), Logs, Restart and Stop or Start, Copy ID.
+pub fn container_actions(cfg: &crate::config::Config, c: &Container) -> Vec<Action> {
+    let running = c.state == "running";
+    let term = |args: &[&str]| cfg.terminal_command(&home(), &argv(args));
+    let mut actions = Vec::new();
+    if running {
+        actions.push(Action {
+            label: "Shell".into(),
+            kind: ActionKind::Command(term(&[
+                "docker",
+                "exec",
+                "-it",
+                &c.id,
+                "sh",
+                "-c",
+                "command -v bash >/dev/null 2>&1 && exec bash || exec sh",
+            ])),
+        });
+    }
+    actions.push(Action {
+        label: "Logs".into(),
+        kind: ActionKind::Command(term(&["docker", "logs", "-f", "--tail", "200", &c.id])),
+    });
+    if running {
+        actions.push(Action {
+            label: "Restart".into(),
+            kind: ActionKind::Command(argv(&["docker", "restart", &c.id])),
+        });
+        actions.push(Action {
+            label: "Stop".into(),
+            kind: ActionKind::Command(argv(&["docker", "stop", &c.id])),
+        });
+    } else {
+        actions.push(Action {
+            label: "Start".into(),
+            kind: ActionKind::Command(argv(&["docker", "start", &c.id])),
+        });
+    }
+    actions.push(Action {
+        label: "Copy ID".into(),
+        kind: ActionKind::CopyText(c.id.clone()),
+    });
+    actions
 }
 
 struct Cached<T> {
@@ -268,25 +354,11 @@ impl DockerProvider {
         {
             return self.cache.borrow().data.clone();
         }
-        let list = gio::spawn_blocking(|| {
-            let out = Command::new("docker")
-                .args(["ps", "-a", "--format", "{{json .}}"])
-                .output()
-                .ok()?;
-            if !out.status.success() {
-                return None;
-            }
-            Some(
-                String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .filter_map(|l| serde_json::from_str::<Container>(l).ok())
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+        let list = gio::spawn_blocking(list_containers)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         let mut c = self.cache.borrow_mut();
         c.data = list.clone();
         c.at = Some(Instant::now());
@@ -327,47 +399,7 @@ impl Provider for DockerProvider {
                     q.score_any([c.names.as_str(), c.image.as_str()])?
                 };
                 let running = c.state == "running";
-                let term = |args: &[&str]| cfg.terminal_command(&home(), &argv(args));
-                let mut actions = Vec::new();
-                if running {
-                    actions.push(Action {
-                        label: "Shell".into(),
-                        kind: ActionKind::Command(term(&[
-                            "docker",
-                            "exec",
-                            "-it",
-                            &c.id,
-                            "sh",
-                            "-c",
-                            "command -v bash >/dev/null 2>&1 && exec bash || exec sh",
-                        ])),
-                    });
-                }
-                actions.push(Action {
-                    label: "Logs".into(),
-                    kind: ActionKind::Command(term(&[
-                        "docker", "logs", "-f", "--tail", "200", &c.id,
-                    ])),
-                });
-                if running {
-                    actions.push(Action {
-                        label: "Restart".into(),
-                        kind: ActionKind::Command(argv(&["docker", "restart", &c.id])),
-                    });
-                    actions.push(Action {
-                        label: "Stop".into(),
-                        kind: ActionKind::Command(argv(&["docker", "stop", &c.id])),
-                    });
-                } else {
-                    actions.push(Action {
-                        label: "Start".into(),
-                        kind: ActionKind::Command(argv(&["docker", "start", &c.id])),
-                    });
-                }
-                actions.push(Action {
-                    label: "Copy ID".into(),
-                    kind: ActionKind::CopyText(c.id.clone()),
-                });
+                let actions = container_actions(&cfg, &c);
                 Some(Item {
                     id: format!("docker:{}", c.names),
                     title: c.names.clone(),
@@ -565,6 +597,23 @@ impl Provider for ServicesProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn docker_published_ports() {
+        assert_eq!(
+            published_ports("127.0.0.1:5005->5005/tcp, 127.0.0.1:8092->8089/tcp"),
+            vec![5005, 8092]
+        );
+        assert_eq!(
+            published_ports("0.0.0.0:8080->80/tcp, [::]:8080->80/tcp, 5432/tcp"),
+            vec![8080]
+        );
+        assert_eq!(
+            published_ports(":::53->53/udp, 0.0.0.0:7000-7002->7000-7002/tcp"),
+            vec![7000, 7001, 7002]
+        );
+        assert!(published_ports("").is_empty());
+    }
 
     #[test]
     fn ssh_config_parsing() {

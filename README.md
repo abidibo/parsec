@@ -289,9 +289,11 @@ the process name over the command line.
 `ps :3000` finds the process listening on TCP port 3000, or on any port
 starting with those digits; `ps :` lists every listening port. Enter still
 sends SIGTERM, and Tab adds *Open in browser* (`http://localhost:3000`).
-Ports held by another user's process, such as a system database, show up
-without an owner and can only be opened. Process rows show their ports in
-the subtitle.
+Linux shows which process holds a socket only to its owner and root, so
+other users' ports are named another way: ports a Docker container publishes
+show the container, with the `dk` actions (shell, logs, restart, stop);
+the rest show the user they run as, such as `ollama` or `root`, and can
+only be opened. Process rows show their ports in the subtitle.
 
 ### Infrastructure
 

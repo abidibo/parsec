@@ -112,8 +112,11 @@ Target: GNOME 46+, Wayland.
 - 2026-10-13: ports under `ps :`. Built into the processes provider rather
   than a plugin: same /proc scan, same actions. Listening sockets come from
   /proc/net/tcp{,6} and are matched by inode against /proc/[pid]/fd links;
-  unmatched ones are listed as owned by another user. Adds ~20 ms to the
-  off-thread scan, still cached for 2 s.
+  unmatched ones are named by the Docker container publishing the port
+  (`docker ps`, only on `ps :` queries, cached 5 s, shared helpers in
+  infra.rs) or else by the socket's uid. Mapping root's sockets to a PID
+  needs root; we don't ask for it. Adds ~20 ms to the off-thread scan,
+  still cached for 2 s.
 
 ## Non-negotiables
 

@@ -4,10 +4,11 @@
 //! left out: you could not signal them anyway.
 //!
 //! `ps :3000` looks processes up by the TCP port they listen on, from
-//! /proc/net/tcp{,6} matched against the sockets in /proc/[pid]/fd. Ports
-//! held by other users are listed without an owner, since their fds are
-//! not readable.
+//! /proc/net/tcp{,6} matched against the sockets in /proc/[pid]/fd. Other
+//! users' fds are not readable, so their ports are named after the Docker
+//! container that publishes them or, failing that, the user that owns them.
 
+use super::infra::{container_actions, list_containers, published_ports, Container};
 use super::SharedConfig;
 use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
 use async_trait::async_trait;
@@ -19,6 +20,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 const CACHE_FOR: Duration = Duration::from_secs(2);
+const DOCKER_CACHE_FOR: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Proc {
@@ -36,13 +38,23 @@ pub struct Proc {
 #[derive(Debug, Clone, Default)]
 struct Snapshot {
     procs: Vec<Proc>,
-    /// Listening ports whose socket belongs to none of our processes.
-    foreign: Vec<u16>,
+    /// Listening ports whose socket belongs to none of our processes,
+    /// with the name of the user that owns the socket.
+    foreign: Vec<(u16, String)>,
+}
+
+/// Who answers on a port, as far as we can tell.
+enum Owner<'a> {
+    Proc(&'a Proc),
+    Container(&'a Container),
+    User(&'a str),
 }
 
 pub struct ProcessesProvider {
     cfg: SharedConfig,
     cache: RefCell<Option<(Instant, Snapshot)>>,
+    docker: bool,
+    containers: RefCell<Option<(Instant, Vec<Container>)>>,
 }
 
 impl ProcessesProvider {
@@ -50,7 +62,29 @@ impl ProcessesProvider {
         Self {
             cfg,
             cache: RefCell::new(None),
+            docker: crate::detect::which("docker").is_some(),
+            containers: RefCell::new(None),
         }
+    }
+
+    /// Only asked for by port queries: `docker ps` is too slow for every
+    /// keystroke of a name search.
+    async fn containers(&self) -> Vec<Container> {
+        if !self.docker {
+            return Vec::new();
+        }
+        if let Some((at, list)) = self.containers.borrow().as_ref() {
+            if at.elapsed() < DOCKER_CACHE_FOR {
+                return list.clone();
+            }
+        }
+        let list = gio::spawn_blocking(list_containers)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        *self.containers.borrow_mut() = Some((Instant::now(), list.clone()));
+        list
     }
 
     async fn snapshot(&self) -> Snapshot {
@@ -64,30 +98,55 @@ impl ProcessesProvider {
         snap
     }
 
-    fn by_port(&self, wanted: &str, snap: &Snapshot) -> Vec<Item> {
+    async fn by_port(&self, wanted: &str, snap: &Snapshot) -> Vec<Item> {
         if !wanted.chars().all(|c| c.is_ascii_digit()) {
             return Vec::new();
         }
-        let mut rows: Vec<(u16, Option<&Proc>)> = snap
+        let containers = if snap.foreign.is_empty() {
+            Vec::new()
+        } else {
+            self.containers().await
+        };
+        let ours: HashSet<u16> = snap.procs.iter().flat_map(|p| p.ports.clone()).collect();
+        // Published ports are listed even without a socket: with Docker's
+        // userland proxy off, iptables forwards them and nothing listens.
+        let published: Vec<(u16, &Container)> = containers
+            .iter()
+            .flat_map(|c| published_ports(&c.ports).into_iter().map(move |p| (p, c)))
+            .filter(|(port, _)| !ours.contains(port))
+            .collect();
+        let docker_ports: HashSet<u16> = published.iter().map(|(p, _)| *p).collect();
+        let mut rows: Vec<(u16, Owner)> = snap
             .procs
             .iter()
-            .flat_map(|p| p.ports.iter().map(move |&port| (port, Some(p))))
-            .chain(snap.foreign.iter().map(|&port| (port, None)))
+            .flat_map(|p| p.ports.iter().map(move |&port| (port, Owner::Proc(p))))
+            .chain(
+                published
+                    .into_iter()
+                    .map(|(port, c)| (port, Owner::Container(c))),
+            )
+            .chain(
+                snap.foreign
+                    .iter()
+                    .filter(|(port, _)| !docker_ports.contains(port))
+                    .map(|(port, user)| (*port, Owner::User(user))),
+            )
             .filter(|(port, _)| port.to_string().starts_with(wanted))
             .collect();
-        rows.sort_by_key(|(port, p)| (*port, p.map(|p| p.pid)));
+        rows.sort_by_key(|(port, _)| *port);
         let n = rows.len() as u32;
+        let cfg = self.cfg.borrow();
         rows.into_iter()
             .enumerate()
-            .map(|(i, (port, p))| {
+            .map(|(i, (port, owner))| {
                 let exact = port.to_string() == wanted;
                 let score = n - i as u32 + if exact { n } else { 0 };
                 let open = Action {
                     label: "Open in browser".into(),
                     kind: ActionKind::OpenUri(format!("http://localhost:{port}")),
                 };
-                let (title, subtitle, actions) = match p {
-                    Some(p) => {
+                let (title, subtitle, actions) = match owner {
+                    Owner::Proc(p) => {
                         let mut acts = actions(&self.cfg, p);
                         acts.insert(1, open);
                         (
@@ -96,9 +155,18 @@ impl ProcessesProvider {
                             acts,
                         )
                     }
-                    None => (
-                        format!(":{port}"),
-                        "listening, owned by another user".into(),
+                    Owner::Container(c) => {
+                        let mut acts = container_actions(&cfg, c);
+                        acts.insert(0, open);
+                        (
+                            format!(":{port} · {}", c.names),
+                            format!("docker · {} · {}", c.image, c.status),
+                            acts,
+                        )
+                    }
+                    Owner::User(user) => (
+                        format!(":{port} · {user}"),
+                        format!("listening as {user}; only root can see which process"),
                         vec![open],
                     ),
                 };
@@ -115,8 +183,14 @@ impl ProcessesProvider {
     }
 }
 
-/// Listening sockets in /proc/net/tcp or tcp6 format: (inode, port).
-pub fn parse_listening(table: &str) -> Vec<(u64, u16)> {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Listener {
+    pub port: u16,
+    pub uid: u32,
+}
+
+/// Listening sockets in /proc/net/tcp or tcp6 format, by inode.
+pub fn parse_listening(table: &str) -> Vec<(u64, Listener)> {
     const LISTEN: &str = "0A";
     table
         .lines()
@@ -127,13 +201,14 @@ pub fn parse_listening(table: &str) -> Vec<(u64, u16)> {
                 return None;
             }
             let port = u16::from_str_radix(f.get(1)?.rsplit(':').next()?, 16).ok()?;
+            let uid = f.get(7)?.parse::<u32>().ok()?;
             let inode = f.get(9)?.parse::<u64>().ok()?;
-            (inode != 0).then_some((inode, port))
+            (inode != 0).then_some((inode, Listener { port, uid }))
         })
         .collect()
 }
 
-fn listening() -> HashMap<u64, u16> {
+fn listening() -> HashMap<u64, Listener> {
     ["/proc/net/tcp", "/proc/net/tcp6"]
         .iter()
         .filter_map(|f| std::fs::read_to_string(f).ok())
@@ -150,8 +225,20 @@ pub fn socket_inode(target: &str) -> Option<u64> {
         .ok()
 }
 
+/// User names by uid, from /etc/passwd.
+pub fn parse_passwd(text: &str) -> HashMap<u32, String> {
+    text.lines()
+        .filter_map(|l| {
+            let mut f = l.split(':');
+            let name = f.next()?;
+            let uid = f.nth(1)?.parse().ok()?;
+            Some((uid, name.to_string()))
+        })
+        .collect()
+}
+
 /// Ports among `listening` that the process at `path` holds a socket for.
-fn ports_of(path: &Path, listening: &HashMap<u64, u16>, seen: &mut HashSet<u64>) -> Vec<u16> {
+fn ports_of(path: &Path, listening: &HashMap<u64, Listener>, seen: &mut HashSet<u64>) -> Vec<u16> {
     let Ok(fds) = std::fs::read_dir(path.join("fd")) else {
         return Vec::new();
     };
@@ -160,7 +247,7 @@ fn ports_of(path: &Path, listening: &HashMap<u64, u16>, seen: &mut HashSet<u64>)
         .filter_map(|fd| {
             let target = std::fs::read_link(fd.path()).ok()?;
             let inode = socket_inode(target.to_str()?)?;
-            let port = *listening.get(&inode)?;
+            let port = listening.get(&inode)?.port;
             seen.insert(inode);
             Some(port)
         })
@@ -226,13 +313,19 @@ fn scan() -> Snapshot {
     // A port can have a socket of ours on IPv4 and someone else's on IPv6;
     // the owner we know about wins.
     let ours: HashSet<u16> = out.iter().flat_map(|p| p.ports.iter().copied()).collect();
-    let mut foreign: Vec<u16> = sockets
+    let users = std::fs::read_to_string("/etc/passwd")
+        .map(|t| parse_passwd(&t))
+        .unwrap_or_default();
+    let mut foreign: Vec<(u16, String)> = sockets
         .iter()
-        .filter(|(inode, port)| !seen.contains(inode) && !ours.contains(port))
-        .map(|(_, &port)| port)
+        .filter(|(inode, l)| !seen.contains(inode) && !ours.contains(&l.port))
+        .map(|(_, l)| {
+            let user = users.get(&l.uid).cloned();
+            (l.port, user.unwrap_or_else(|| format!("uid {}", l.uid)))
+        })
         .collect();
-    foreign.sort_unstable();
-    foreign.dedup();
+    foreign.sort();
+    foreign.dedup_by_key(|(port, _)| *port);
     Snapshot {
         procs: out,
         foreign,
@@ -367,7 +460,7 @@ impl Provider for ProcessesProvider {
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         let snap = self.snapshot().await;
         if let Some(port) = q.text.trim().strip_prefix(':') {
-            return self.by_port(port.trim(), &snap);
+            return self.by_port(port.trim(), &snap).await;
         }
         let procs = &snap.procs;
         let n = procs.len() as u32;
@@ -429,10 +522,22 @@ mod tests {
    0: 0100007F:0BB8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 41234 1 0000000000000000 100 0 0 10 0
    1: 0100007F:0BB8 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1000        0 41299 1 0000000000000000 20 4 30 10 -1
    2: 00000000:1538 00000000:0000 0A 00000000:00000000 00:00000000 00000000   120        0 18821 1 0000000000000000 100 0 0 10 0";
-        assert_eq!(parse_listening(table), vec![(41234, 3000), (18821, 5432)]);
+        let l = |port, uid| Listener { port, uid };
+        assert_eq!(
+            parse_listening(table),
+            vec![(41234, l(3000, 1000)), (18821, l(5432, 120))]
+        );
         let v6 = "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 00000000000000000000000000000000:2405 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 52001 1 0000000000000000 100 0 0 10 0";
-        assert_eq!(parse_listening(v6), vec![(52001, 9221)]);
+        assert_eq!(parse_listening(v6), vec![(52001, l(9221, 1000))]);
+    }
+
+    #[test]
+    fn passwd_names() {
+        let users = parse_passwd("root:x:0:0:root:/root:/bin/bash\nollama:x:996:986::/usr/share/ollama:/bin/false\n# junk\n");
+        assert_eq!(users.get(&0).map(String::as_str), Some("root"));
+        assert_eq!(users.get(&996).map(String::as_str), Some("ollama"));
+        assert_eq!(users.len(), 2);
     }
 
     #[test]
