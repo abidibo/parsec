@@ -109,6 +109,12 @@ Target: GNOME 46+, Wayland.
   stats its sources on each query and reparses only when an mtime moved;
   the daemon pre-warms it at startup. Frecency ids are hashed.
 
+- 2026-10-13: ports under `ps :`. Built into the processes provider rather
+  than a plugin: same /proc scan, same actions. Listening sockets come from
+  /proc/net/tcp{,6} and are matched by inode against /proc/[pid]/fd links;
+  unmatched ones are listed as owned by another user. Adds ~20 ms to the
+  off-thread scan, still cached for 2 s.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

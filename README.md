@@ -170,7 +170,7 @@ narrows the search to one of them.
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
-| `ps name` | your processes, heaviest first: terminate, kill, watch |
+| `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
 | `parsec` | Parsec's own entries: settings, quit, update when one is available |
 
 Keys:
@@ -285,6 +285,13 @@ Rows whose program is missing are not shown.
 memory and command line. Enter sends SIGTERM; Tab offers SIGKILL, *Watch*
 (`htop -p` or `top -p` in your terminal) and *Copy PID*. Matching prefers
 the process name over the command line.
+
+`ps :3000` finds the process listening on TCP port 3000, or on any port
+starting with those digits; `ps :` lists every listening port. Enter still
+sends SIGTERM, and Tab adds *Open in browser* (`http://localhost:3000`).
+Ports held by another user's process, such as a system database, show up
+without an owner and can only be opened. Process rows show their ports in
+the subtitle.
 
 ### Infrastructure
 

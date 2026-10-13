@@ -2,12 +2,18 @@
 //! the process to quit (SIGTERM); Tab offers SIGKILL, a live view in your
 //! terminal, and the PID. Other users' processes and kernel threads are
 //! left out: you could not signal them anyway.
+//!
+//! `ps :3000` looks processes up by the TCP port they listen on, from
+//! /proc/net/tcp{,6} matched against the sockets in /proc/[pid]/fd. Ports
+//! held by other users are listed without an owner, since their fds are
+//! not readable.
 
 use super::SharedConfig;
 use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
 use async_trait::async_trait;
 use gtk::gio;
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -23,11 +29,20 @@ pub struct Proc {
     pub cpu: f64,
     /// Resident memory, bytes.
     pub rss: u64,
+    /// TCP ports it listens on, sorted.
+    pub ports: Vec<u16>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Snapshot {
+    procs: Vec<Proc>,
+    /// Listening ports whose socket belongs to none of our processes.
+    foreign: Vec<u16>,
 }
 
 pub struct ProcessesProvider {
     cfg: SharedConfig,
-    cache: RefCell<Option<(Instant, Vec<Proc>)>>,
+    cache: RefCell<Option<(Instant, Snapshot)>>,
 }
 
 impl ProcessesProvider {
@@ -38,16 +53,121 @@ impl ProcessesProvider {
         }
     }
 
-    async fn procs(&self) -> Vec<Proc> {
-        if let Some((at, list)) = self.cache.borrow().as_ref() {
+    async fn snapshot(&self) -> Snapshot {
+        if let Some((at, snap)) = self.cache.borrow().as_ref() {
             if at.elapsed() < CACHE_FOR {
-                return list.clone();
+                return snap.clone();
             }
         }
-        let list = gio::spawn_blocking(scan).await.unwrap_or_default();
-        *self.cache.borrow_mut() = Some((Instant::now(), list.clone()));
-        list
+        let snap = gio::spawn_blocking(scan).await.unwrap_or_default();
+        *self.cache.borrow_mut() = Some((Instant::now(), snap.clone()));
+        snap
     }
+
+    fn by_port(&self, wanted: &str, snap: &Snapshot) -> Vec<Item> {
+        if !wanted.chars().all(|c| c.is_ascii_digit()) {
+            return Vec::new();
+        }
+        let mut rows: Vec<(u16, Option<&Proc>)> = snap
+            .procs
+            .iter()
+            .flat_map(|p| p.ports.iter().map(move |&port| (port, Some(p))))
+            .chain(snap.foreign.iter().map(|&port| (port, None)))
+            .filter(|(port, _)| port.to_string().starts_with(wanted))
+            .collect();
+        rows.sort_by_key(|(port, p)| (*port, p.map(|p| p.pid)));
+        let n = rows.len() as u32;
+        rows.into_iter()
+            .enumerate()
+            .map(|(i, (port, p))| {
+                let exact = port.to_string() == wanted;
+                let score = n - i as u32 + if exact { n } else { 0 };
+                let open = Action {
+                    label: "Open in browser".into(),
+                    kind: ActionKind::OpenUri(format!("http://localhost:{port}")),
+                };
+                let (title, subtitle, actions) = match p {
+                    Some(p) => {
+                        let mut acts = actions(&self.cfg, p);
+                        acts.insert(1, open);
+                        (
+                            format!(":{port} · {}", p.name),
+                            format!("{} · {}", p.pid, p.cmdline),
+                            acts,
+                        )
+                    }
+                    None => (
+                        format!(":{port}"),
+                        "listening, owned by another user".into(),
+                        vec![open],
+                    ),
+                };
+                Item {
+                    id: format!("port:{port}"),
+                    title,
+                    subtitle: Some(subtitle),
+                    icon: Icon::Named("network-server-symbolic".into()),
+                    score,
+                    actions,
+                }
+            })
+            .collect()
+    }
+}
+
+/// Listening sockets in /proc/net/tcp or tcp6 format: (inode, port).
+pub fn parse_listening(table: &str) -> Vec<(u64, u16)> {
+    const LISTEN: &str = "0A";
+    table
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.get(3) != Some(&LISTEN) {
+                return None;
+            }
+            let port = u16::from_str_radix(f.get(1)?.rsplit(':').next()?, 16).ok()?;
+            let inode = f.get(9)?.parse::<u64>().ok()?;
+            (inode != 0).then_some((inode, port))
+        })
+        .collect()
+}
+
+fn listening() -> HashMap<u64, u16> {
+    ["/proc/net/tcp", "/proc/net/tcp6"]
+        .iter()
+        .filter_map(|f| std::fs::read_to_string(f).ok())
+        .flat_map(|t| parse_listening(&t))
+        .collect()
+}
+
+/// The inode of an fd link target like `socket:[12345]`.
+pub fn socket_inode(target: &str) -> Option<u64> {
+    target
+        .strip_prefix("socket:[")?
+        .strip_suffix(']')?
+        .parse()
+        .ok()
+}
+
+/// Ports among `listening` that the process at `path` holds a socket for.
+fn ports_of(path: &Path, listening: &HashMap<u64, u16>, seen: &mut HashSet<u64>) -> Vec<u16> {
+    let Ok(fds) = std::fs::read_dir(path.join("fd")) else {
+        return Vec::new();
+    };
+    let mut ports: Vec<u16> = fds
+        .flatten()
+        .filter_map(|fd| {
+            let target = std::fs::read_link(fd.path()).ok()?;
+            let inode = socket_inode(target.to_str()?)?;
+            let port = *listening.get(&inode)?;
+            seen.insert(inode);
+            Some(port)
+        })
+        .collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
 }
 
 /// Fields of /proc/[pid]/stat after the parenthesised name:
@@ -63,7 +183,7 @@ pub fn parse_stat(stat: &str) -> Option<(String, u64, u64, u64)> {
     Some((name, field(14)?, field(15)?, field(22)?))
 }
 
-fn scan() -> Vec<Proc> {
+fn scan() -> Snapshot {
     let me = std::fs::metadata("/proc/self").map(|m| m.uid()).ok();
     let self_pid = std::process::id();
     let ticks = clock_ticks();
@@ -73,8 +193,10 @@ fn scan() -> Vec<Proc> {
         .unwrap_or(0.0);
     let page = page_size();
     let Ok(dir) = std::fs::read_dir("/proc") else {
-        return Vec::new();
+        return Snapshot::default();
     };
+    let sockets = listening();
+    let mut seen = HashSet::new();
     let mut out = Vec::new();
     for entry in dir.flatten() {
         let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
@@ -87,9 +209,12 @@ fn scan() -> Vec<Proc> {
         if me.is_some() && std::fs::metadata(&path).map(|m| m.uid()).ok() != me {
             continue;
         }
-        let Some(p) = read_proc(&path, pid, ticks, uptime, page) else {
+        let Some(mut p) = read_proc(&path, pid, ticks, uptime, page) else {
             continue;
         };
+        if !sockets.is_empty() {
+            p.ports = ports_of(&path, &sockets, &mut seen);
+        }
         out.push(p);
     }
     out.sort_by(|a, b| {
@@ -98,7 +223,20 @@ fn scan() -> Vec<Proc> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| b.rss.cmp(&a.rss))
     });
-    out
+    // A port can have a socket of ours on IPv4 and someone else's on IPv6;
+    // the owner we know about wins.
+    let ours: HashSet<u16> = out.iter().flat_map(|p| p.ports.iter().copied()).collect();
+    let mut foreign: Vec<u16> = sockets
+        .iter()
+        .filter(|(inode, port)| !seen.contains(inode) && !ours.contains(port))
+        .map(|(_, &port)| port)
+        .collect();
+    foreign.sort_unstable();
+    foreign.dedup();
+    Snapshot {
+        procs: out,
+        foreign,
+    }
 }
 
 fn read_proc(path: &Path, pid: u32, ticks: f64, uptime: f64, page: u64) -> Option<Proc> {
@@ -131,6 +269,7 @@ fn read_proc(path: &Path, pid: u32, ticks: f64, uptime: f64, page: u64) -> Optio
         cmdline,
         cpu,
         rss,
+        ports: Vec::new(),
     })
 }
 
@@ -226,7 +365,11 @@ impl Provider for ProcessesProvider {
     }
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
-        let procs = self.procs().await;
+        let snap = self.snapshot().await;
+        if let Some(port) = q.text.trim().strip_prefix(':') {
+            return self.by_port(port.trim(), &snap);
+        }
+        let procs = &snap.procs;
         let n = procs.len() as u32;
         procs
             .iter()
@@ -241,14 +384,16 @@ impl Provider for ProcessesProvider {
                     let by_cmd = q.score(&p.cmdline).map(|s| s / 3);
                     by_name.into_iter().chain(by_cmd).max()?
                 };
+                let ports: String = p.ports.iter().map(|port| format!(":{port} · ")).collect();
                 Some(Item {
                     id: format!("proc:{}", p.name),
                     title: p.name.clone(),
                     subtitle: Some(format!(
-                        "{} · {:.1}% cpu · {} · {}",
+                        "{} · {:.1}% cpu · {} · {}{}",
                         p.pid,
                         p.cpu,
                         human_bytes(p.rss),
+                        ports,
                         p.cmdline
                     )),
                     icon: Icon::Named("utilities-system-monitor-symbolic".into()),
@@ -279,8 +424,36 @@ mod tests {
     }
 
     #[test]
+    fn listening_sockets_only() {
+        let table = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:0BB8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 41234 1 0000000000000000 100 0 0 10 0
+   1: 0100007F:0BB8 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1000        0 41299 1 0000000000000000 20 4 30 10 -1
+   2: 00000000:1538 00000000:0000 0A 00000000:00000000 00:00000000 00000000   120        0 18821 1 0000000000000000 100 0 0 10 0";
+        assert_eq!(parse_listening(table), vec![(41234, 3000), (18821, 5432)]);
+        let v6 = "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 00000000000000000000000000000000:2405 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 52001 1 0000000000000000 100 0 0 10 0";
+        assert_eq!(parse_listening(v6), vec![(52001, 9221)]);
+    }
+
+    #[test]
+    fn socket_links() {
+        assert_eq!(socket_inode("socket:[41234]"), Some(41234));
+        assert_eq!(socket_inode("pipe:[41234]"), None);
+        assert_eq!(socket_inode("/dev/null"), None);
+    }
+
+    #[test]
+    fn finds_our_own_listener() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut seen = HashSet::new();
+        let ports = ports_of(Path::new("/proc/self"), &listening(), &mut seen);
+        assert!(ports.contains(&port), "{port} not in {ports:?}");
+    }
+
+    #[test]
     fn scan_finds_ourselves_absent_but_others_present() {
-        let list = scan();
+        let list = scan().procs;
         assert!(list.iter().all(|p| p.pid != std::process::id()));
         assert!(!list.is_empty());
     }
