@@ -494,6 +494,7 @@ talks to over stdin/stdout, one JSON object per line. Plugins live in
 
 | Plugin | Verb | What it does |
 |---|---|---|
+| [Dev toolbox](https://github.com/abidibo/parsec-devtools) | `dev` | UUIDs, Unix time and dates, JWTs, colours, base64, URL encoding and hashes, offline. Needs Python 3.8+. |
 | [Translator](https://github.com/abidibo/parsec-translator) | `tr` | Translates text with free online services, no account or key. Needs Python 3.8+. |
 
 Install one with `parsec plugin install <repository URL>`, for example:
