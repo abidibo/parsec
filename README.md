@@ -481,6 +481,20 @@ A plugin is a small program in any language that Parsec starts once and
 talks to over stdin/stdout, one JSON object per line. Plugins live in
 `~/.local/share/parsec/plugins/<id>/`.
 
+### Available plugins
+
+| Plugin | Verb | What it does |
+|---|---|---|
+| [Translator](https://github.com/abidibo/parsec-translator) | `tr` | Translates text with free online services, no account or key. Needs Python 3.8+. |
+
+Install one with `parsec plugin install <repository URL>`, for example:
+
+```sh
+parsec plugin install https://github.com/abidibo/parsec-translator
+```
+
+Wrote a plugin? Open a pull request that adds it to this table.
+
 ### Installing
 
 Settings › Plugins installs from a `.zip`, a folder, or a git URL, and lists
