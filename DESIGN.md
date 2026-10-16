@@ -151,6 +151,9 @@ Target: GNOME 46+, Wayland.
   qrcode crate without default features (no `image`); pixels drawn by
   hand at an even module size aiming at 480 px, shown at 240, so HiDPI
   is sharp and 1x halves cleanly. Clipboard secrets are never drawn.
+  `qr wifi [name]`: the standard WIFI: payload from nmcli (`-e no -s -g`,
+  off-thread, ~40 ms); the password is copied only as a secret and never
+  logged or written to disk unless you save the image.
 
 ## Non-negotiables
 

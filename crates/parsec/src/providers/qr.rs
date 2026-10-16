@@ -2,6 +2,10 @@
 //! type, to scan with a phone. `qr` alone encodes the clipboard. Enter
 //! copies the image; Tab saves it to Pictures or copies the text.
 //!
+//! `qr wifi` is the code a phone joins the current Wi-Fi network with;
+//! `qr wifi name` picks a saved network by name. Credentials come from
+//! NetworkManager (`nmcli`), off the main thread, and are never logged.
+//!
 //! Always black on white with the standard quiet zone, whatever the theme:
 //! phone cameras read that best.
 
@@ -158,6 +162,13 @@ impl Provider for QrProvider {
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         let typed = q.text.trim();
+        if let Some(filter) = wifi_filter(typed) {
+            let filter = filter.to_string();
+            let found = gio::spawn_blocking(move || find_wifi(&filter))
+                .await
+                .unwrap_or_else(|_| Err("Reading Wi-Fi settings failed".into()));
+            return vec![wifi_item(found)];
+        }
         let (text, source) = if typed.is_empty() {
             match clipboard_text().await {
                 // A password Parsec just copied stays off the screen.
@@ -212,9 +223,248 @@ impl Provider for QrProvider {
     }
 }
 
+// ---------------------------------------------------------------- wifi
+
+/// `wifi` or `wifi <name>`: the network filter, else `None`.
+fn wifi_filter(typed: &str) -> Option<&str> {
+    let head = typed.get(..4)?;
+    let rest = &typed[4..];
+    (head.eq_ignore_ascii_case("wifi")
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace)))
+    .then(|| rest.trim())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Security {
+    Wpa,
+    Wep,
+    Open,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Wifi {
+    ssid: String,
+    security: Security,
+    password: String,
+    hidden: bool,
+}
+
+/// The `WIFI:` string phone cameras understand.
+fn wifi_payload(w: &Wifi) -> String {
+    fn esc(s: &str) -> String {
+        s.chars()
+            .flat_map(|c| match c {
+                '\\' | ';' | ',' | ':' | '"' => vec!['\\', c],
+                c => vec![c],
+            })
+            .collect()
+    }
+    let (kind, pass) = match w.security {
+        Security::Wpa => ("WPA", format!("P:{};", esc(&w.password))),
+        Security::Wep => ("WEP", format!("P:{};", esc(&w.password))),
+        Security::Open => ("nopass", String::new()),
+    };
+    let hidden = if w.hidden { "H:true;" } else { "" };
+    format!("WIFI:T:{kind};S:{};{pass}{hidden};", esc(&w.ssid))
+}
+
+/// One row of `nmcli -t -f UUID,TYPE,ACTIVE,NAME connection show`. Only
+/// the name, last, can hold an escaped colon.
+fn parse_connection(line: &str) -> Option<(&str, &str, bool, String)> {
+    let mut it = line.splitn(4, ':');
+    let uuid = it.next()?;
+    let kind = it.next()?;
+    let active = it.next()? == "yes";
+    let name = it.next()?.replace("\\:", ":").replace("\\\\", "\\");
+    Some((uuid, kind, active, name))
+}
+
+/// Map `nmcli` key management to what the QR code needs.
+fn security_of(key_mgmt: &str, wep_key: &str) -> Result<Security, String> {
+    match key_mgmt {
+        "" => Ok(Security::Open),
+        "none" if !wep_key.is_empty() => Ok(Security::Wep),
+        "none" | "owe" => Ok(Security::Open),
+        k if k.contains("eap") || k.contains("8021x") => {
+            Err("Enterprise (802.1X) networks can't be shared with a QR code".into())
+        }
+        _ => Ok(Security::Wpa),
+    }
+}
+
+fn nmcli(args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("nmcli")
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|_| "Needs NetworkManager (nmcli)".to_string())?;
+    if !out.status.success() {
+        return Err("NetworkManager didn't answer".into());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The active Wi-Fi connection, or the saved one whose name contains
+/// `filter`. Blocking: runs `nmcli` twice.
+fn find_wifi(filter: &str) -> Result<Wifi, String> {
+    let list = nmcli(&["-t", "-f", "UUID,TYPE,ACTIVE,NAME", "connection", "show"])?;
+    let wanted = filter.to_lowercase();
+    let mut saved: Vec<(String, bool, String)> = list
+        .lines()
+        .filter_map(parse_connection)
+        .filter(|(_, kind, _, _)| *kind == "802-11-wireless")
+        .filter(|(_, _, active, name)| {
+            if wanted.is_empty() {
+                *active
+            } else {
+                name.to_lowercase().contains(&wanted)
+            }
+        })
+        .map(|(uuid, _, active, name)| (uuid.to_string(), active, name))
+        .collect();
+    // The network you're on wins a tie.
+    saved.sort_by_key(|(_, active, _)| !*active);
+    let Some((uuid, _, _)) = saved.into_iter().next() else {
+        return Err(if wanted.is_empty() {
+            "Not connected to Wi-Fi".into()
+        } else {
+            format!("No saved Wi-Fi network matches \"{filter}\"")
+        });
+    };
+    let fields = nmcli(&[
+        "-e",
+        "no",
+        "-s",
+        "-g",
+        "802-11-wireless.ssid,802-11-wireless.hidden,\
+         802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,\
+         802-11-wireless-security.wep-key0",
+        "connection",
+        "show",
+        "uuid",
+        &uuid,
+    ])?;
+    let lines: Vec<&str> = fields.lines().collect();
+    let field = |i: usize| lines.get(i).copied().unwrap_or("").to_string();
+    let wep = field(4);
+    let security = security_of(&field(2), &wep)?;
+    let password = match security {
+        Security::Wpa => field(3),
+        Security::Wep => wep,
+        Security::Open => String::new(),
+    };
+    if security != Security::Open && password.is_empty() {
+        return Err("NetworkManager didn't share this network's password".into());
+    }
+    Ok(Wifi {
+        ssid: field(0),
+        security,
+        password,
+        hidden: field(1) == "yes",
+    })
+}
+
+fn wifi_item(found: Result<Wifi, String>) -> Item {
+    let w = match found {
+        Ok(w) => w,
+        Err(why) => {
+            return Item {
+                id: "qr:wifi".into(),
+                title: why,
+                subtitle: Some("Wi-Fi QR code".into()),
+                icon: Icon::Named("network-wireless-offline-symbolic".into()),
+                score: 1,
+                actions: vec![Action {
+                    label: "Wi-Fi settings".into(),
+                    kind: ActionKind::Command(vec!["gnome-control-center".into(), "wifi".into()]),
+                }],
+            };
+        }
+    };
+    let security = match w.security {
+        Security::Wpa => "WPA",
+        Security::Wep => "WEP",
+        Security::Open => "open",
+    };
+    let hidden = if w.hidden { " · hidden" } else { "" };
+    let texture = match render(&wifi_payload(&w)) {
+        Ok(t) => t,
+        Err(why) => return wifi_item(Err(why)),
+    };
+    let (for_copy, for_save) = (texture.clone(), texture.clone());
+    let mut actions = vec![
+        Action {
+            label: "Copy image".into(),
+            kind: ActionKind::Callback(Rc::new(move || copy_png(&for_copy))),
+        },
+        Action {
+            label: "Save to Pictures".into(),
+            kind: ActionKind::Callback(Rc::new(move || save_png(&for_save))),
+        },
+    ];
+    if !w.password.is_empty() {
+        // Kept out of the clipboard history and cleared, like a KeePass one.
+        actions.push(Action {
+            label: "Copy password".into(),
+            kind: ActionKind::CopySecret {
+                text: w.password.clone(),
+                clear_after_secs: 30,
+            },
+        });
+    }
+    Item {
+        id: "qr:wifi".into(),
+        title: w.ssid.clone(),
+        subtitle: Some(format!("Wi-Fi · {security}{hidden} · scan to join")),
+        icon: Icon::Picture(texture),
+        score: 1,
+        actions,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wifi_payloads_escape_specials() {
+        let w = Wifi {
+            ssid: "Café;Net".into(),
+            security: Security::Wpa,
+            password: r#"p:a\s"s"#.into(),
+            hidden: false,
+        };
+        assert_eq!(wifi_payload(&w), r#"WIFI:T:WPA;S:Café\;Net;P:p\:a\\s\"s;;"#);
+        let open = Wifi {
+            ssid: "Guest".into(),
+            security: Security::Open,
+            password: String::new(),
+            hidden: true,
+        };
+        assert_eq!(wifi_payload(&open), "WIFI:T:nopass;S:Guest;H:true;;");
+    }
+
+    #[test]
+    fn wifi_verb_needs_the_whole_word() {
+        assert_eq!(wifi_filter("wifi"), Some(""));
+        assert_eq!(wifi_filter("WiFi  home "), Some("home"));
+        assert_eq!(wifi_filter("wifis"), None);
+        assert_eq!(wifi_filter("wif"), None);
+        assert_eq!(wifi_filter("ü"), None);
+    }
+
+    #[test]
+    fn nmcli_rows_and_security() {
+        let (uuid, kind, active, name) =
+            parse_connection(r"0f-1:802-11-wireless:yes:Home\:5G").unwrap();
+        assert_eq!((uuid, kind, active), ("0f-1", "802-11-wireless", true));
+        assert_eq!(name, "Home:5G");
+        assert_eq!(security_of("wpa-psk", ""), Ok(Security::Wpa));
+        assert_eq!(security_of("sae", ""), Ok(Security::Wpa));
+        assert_eq!(security_of("none", "abc"), Ok(Security::Wep));
+        assert_eq!(security_of("", ""), Ok(Security::Open));
+        assert!(security_of("wpa-eap", "").is_err());
+    }
 
     #[test]
     fn modules_scale_evenly_with_a_quiet_zone() {

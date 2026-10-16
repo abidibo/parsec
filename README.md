@@ -170,7 +170,7 @@ narrows the search to one of them.
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
-| `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard |
+| `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard; `qr wifi` lets a phone join your Wi-Fi |
 | `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
 | `parsec` | Parsec's own entries: settings, quit, update when one is available |
@@ -219,6 +219,13 @@ sending a link to your phone. Enter copies the code as an image, Tab saves
 it as `~/Pictures/qr-<time>.png` or copies the text. Codes are always black
 on white with a margin, which phone cameras read best, and hold up to about
 2,900 bytes. A password Parsec just copied from KeePass is never drawn.
+
+`qr wifi` draws the code a phone camera joins your current Wi-Fi network
+with: no typing the password for guests. `qr wifi office` picks a saved
+network whose name contains "office". The network name, security and
+password come from NetworkManager (`nmcli`); Tab also offers *Copy password*,
+kept out of the clipboard history and cleared after 30 seconds. Enterprise
+(802.1X) networks have no password to share, so they get a message instead.
 
 ### Browser history and bookmarks
 
