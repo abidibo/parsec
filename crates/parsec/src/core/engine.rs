@@ -324,23 +324,33 @@ pub fn run_detached(kind: &ActionKind) -> Result<()> {
     run(kind)
 }
 
+/// Start `argv` detached in `cwd`, or in the home folder: never in
+/// whatever folder the daemon happened to be started from.
+pub fn spawn_in(argv: &[String], cwd: Option<&str>) -> Result<()> {
+    let (program, args) = argv.split_first().context("empty command")?;
+    let mut cmd = std::process::Command::new(program);
+    match cwd.map(std::path::PathBuf::from).or_else(dirs::home_dir) {
+        Some(dir) => cmd.current_dir(dir),
+        None => &mut cmd,
+    };
+    let child = cmd
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .with_context(|| format!("spawning {program}"))?;
+    super::scope::adopt(child.id(), super::scope::app_id_for(program));
+    Ok(())
+}
+
 fn run(kind: &ActionKind) -> Result<()> {
     match kind {
         ActionKind::LaunchApp(info) => {
             info.launch(&[], super::scope::launch_context().as_ref())
                 .with_context(|| format!("launching {}", info.id().unwrap_or_default()))?;
         }
-        ActionKind::Command(argv) => {
-            let (program, args) = argv.split_first().context("empty command")?;
-            let child = std::process::Command::new(program)
-                .args(args)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .with_context(|| format!("spawning {program}"))?;
-            super::scope::adopt(child.id(), super::scope::app_id_for(program));
-        }
+        ActionKind::Command(argv) => spawn_in(argv, None)?,
         ActionKind::CopyText(text) => copy_text(text)?,
         ActionKind::Paste(text) => {
             let bridge = crate::gnome_shell::bridge();
