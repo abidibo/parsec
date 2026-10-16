@@ -594,6 +594,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             v.browser,
             Box::new(|c: &mut Config, s: String| c.verbs.browser = s),
         ),
+        (
+            "QR code",
+            v.qr,
+            Box::new(|c: &mut Config, s: String| c.verbs.qr = s),
+        ),
     ] {
         let set = Rc::new(set);
         verbs.add(&text_row(

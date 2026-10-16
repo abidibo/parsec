@@ -11,6 +11,7 @@ pub mod keepass;
 pub mod plugin_host;
 pub mod processes;
 pub mod projects;
+pub mod qr;
 pub mod shell;
 pub mod shell_history;
 pub mod shortcuts;
@@ -37,6 +38,7 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(shortcuts::ShortcutsProvider::new(cfg.clone())),
         Box::new(files::FilesProvider::new(cfg.clone())),
         Box::new(browser::BrowserProvider::new(cfg.clone(), daemon)),
+        Box::new(qr::QrProvider::new(cfg.clone())),
         Box::new(infra::SshProvider::new(cfg.clone())),
         Box::new(infra::DockerProvider::new(cfg.clone())),
         Box::new(infra::ServicesProvider::new(cfg.clone())),

@@ -42,6 +42,9 @@ pub enum Icon {
     GIcon(gio::Icon),
     /// An image file (shortcut and plugin icons).
     Path(std::path::PathBuf),
+    /// A picture that is the result itself (a QR code): drawn large, with
+    /// the title and actions below it instead of beside an icon.
+    Picture(gtk::gdk::Texture),
 }
 
 #[derive(Debug, Clone)]

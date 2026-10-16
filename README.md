@@ -170,6 +170,7 @@ narrows the search to one of them.
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
+| `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard |
 | `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
 | `parsec` | Parsec's own entries: settings, quit, update when one is available |
@@ -209,6 +210,15 @@ commands of a terminal that is still open may not show until it closes;
 bash makes them immediate. Parsec's own runs are recorded at once in
 `~/.local/share/parsec/shell_history.json`, mode 0600. Settings ›
 Providers › Shell history turns it off or points at other files.
+
+### QR codes
+
+`qr` followed by text draws its QR code large in the launcher, updating as
+you type; `qr` alone encodes whatever text is on the clipboard, handy for
+sending a link to your phone. Enter copies the code as an image, Tab saves
+it as `~/Pictures/qr-<time>.png` or copies the text. Codes are always black
+on white with a margin, which phone cameras read best, and hold up to about
+2,900 bytes. A password Parsec just copied from KeePass is never drawn.
 
 ### Browser history and bookmarks
 
@@ -442,6 +452,8 @@ services = "svc"
 windows = "win"
 system = "sys"
 processes = "ps"
+browser = "h"
+qr = "qr"
 
 [files]
 roots = ["~"]
@@ -688,7 +700,7 @@ crates/parsec/src
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
-│                    browser (Chromium and Firefox history and bookmarks),
+│                    browser (Chromium and Firefox history and bookmarks), qr,
 │                    shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```

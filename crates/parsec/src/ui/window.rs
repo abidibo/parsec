@@ -16,6 +16,8 @@ use std::rc::Rc;
 const WIDTH: i32 = 720;
 const ROW_HEIGHT: i32 = 56;
 const VISIBLE_ROWS: i32 = 8;
+/// Side of a result that is a picture (QR code), in logical pixels.
+const PICTURE_SIZE: i32 = 240;
 /// Transparent margin around the panel where the shadow is drawn.
 const SHADOW_MARGIN: i32 = 28;
 const PLACEHOLDER: &str = "Search apps, projects, clipboard…";
@@ -41,6 +43,7 @@ pub const USER_CSS_TEMPLATE: &str = r#"/* Parsec user stylesheet. Reloaded live 
      window.parsec  .parsec-panel  .parsec-search  .parsec-entry  .parsec-chip
      .parsec-results row (:selected)  .parsec-tile  .parsec-title
      .parsec-subtitle  .parsec-action  .parsec-section  .parsec-empty
+     .parsec-picture
      .parsec-welcome  .parsec-footer  .parsec-key
 */
 
@@ -191,6 +194,10 @@ window.parsec {
 .parsec-subtitle {
     font-size: 12px;
     color: @parsec_dim;
+}
+.parsec-picture {
+    margin-top: 12px;
+    border-radius: 8px;
 }
 .parsec-action {
     font-size: 12px;
@@ -1149,7 +1156,7 @@ fn title_markup(title: &str, highlight: &[u32], accent: &str) -> String {
 
 fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
     let item = &hit.item;
-    let symbolic = !matches!(item.icon, Icon::GIcon(_) | Icon::Path(_));
+    let symbolic = !matches!(item.icon, Icon::GIcon(_) | Icon::Path(_) | Icon::Picture(_));
     let image = gtk::Image::builder()
         .pixel_size(if symbolic { 18 } else { 28 })
         .halign(gtk::Align::Center)
@@ -1160,6 +1167,7 @@ fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
         Icon::Named(name) => image.set_icon_name(Some(name)),
         Icon::GIcon(gicon) => image.set_from_gicon(gicon),
         Icon::Path(path) => image.set_from_file(Some(path)),
+        Icon::Picture(texture) => image.set_paintable(Some(texture)),
     }
     let tile = gtk::Box::builder()
         .css_classes(["parsec-tile", &format!("tile-{}", hit.provider)])
@@ -1240,6 +1248,25 @@ fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
     }
 
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    if let Icon::Picture(texture) = &item.icon {
+        // The picture is the result: large on top, the text row under it.
+        let picture = gtk::Picture::builder()
+            .paintable(texture)
+            .content_fit(gtk::ContentFit::Contain)
+            .can_shrink(true)
+            .width_request(PICTURE_SIZE)
+            .height_request(PICTURE_SIZE)
+            .halign(gtk::Align::Center)
+            .css_classes(["parsec-picture"])
+            .build();
+        hbox.append(&texts);
+        hbox.append(&trailing);
+        hbox.set_margin_bottom(10);
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        vbox.append(&picture);
+        vbox.append(&hbox);
+        return gtk::ListBoxRow::builder().child(&vbox).build();
+    }
     hbox.append(&tile);
     hbox.append(&texts);
     hbox.append(&trailing);
@@ -1247,20 +1274,23 @@ fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
 }
 
 fn set_action_label(row: &gtk::ListBoxRow, text: &str) {
-    // row > hbox > [tile, texts, trailing > [num?, action, marks...]]
-    let Some(hbox) = row.child() else { return };
-    let Some(trailing) = hbox.last_child() else {
-        return;
-    };
-    let mut child = trailing.first_child();
-    while let Some(w) = child {
+    // The label with the `parsec-action` class, wherever the row's layout
+    // put it (beside an icon, or under a picture).
+    fn find(w: &gtk::Widget) -> Option<gtk::Label> {
         if w.has_css_class("parsec-action") {
-            if let Ok(label) = w.downcast::<gtk::Label>() {
-                label.set_label(text);
-            }
-            return;
+            return w.clone().downcast::<gtk::Label>().ok();
         }
-        child = w.next_sibling();
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            if let Some(found) = find(&c) {
+                return Some(found);
+            }
+            child = c.next_sibling();
+        }
+        None
+    }
+    if let Some(label) = row.child().as_ref().and_then(find) {
+        label.set_label(text);
     }
 }
 

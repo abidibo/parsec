@@ -144,6 +144,14 @@ Target: GNOME 46+, Wayland.
   ~/.local/bin/parsec, so it never overwrites an install the script
   doesn't manage. Testable with a `PARSEC_VERSION=1.0.0` build.
 
+- 2026-10-16: `qr` verb. Native, not a plugin: it needs a large image in
+  the launcher, which the plugin protocol can't carry. New `Icon::Picture`
+  (a gdk::Texture) makes a row draw the picture large with title and
+  actions underneath; plugins could map an image field to it later.
+  qrcode crate without default features (no `image`); pixels drawn by
+  hand at an even module size aiming at 480 px, shown at 240, so HiDPI
+  is sharp and 1x halves cleanly. Clipboard secrets are never drawn.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project
