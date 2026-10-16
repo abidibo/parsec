@@ -171,6 +171,7 @@ narrows the search to one of them.
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
 | `ip` | your local, public and VPN addresses; Enter copies |
+| `img 50%` | resize, convert, crop or trim the images you copied in Files |
 | `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard; `qr wifi` lets a phone join your Wi-Fi |
 | `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
@@ -211,6 +212,39 @@ commands of a terminal that is still open may not show until it closes;
 bash makes them immediate. Parsec's own runs are recorded at once in
 `~/.local/share/parsec/shell_history.json`, mode 0600. Settings ›
 Providers › Shell history turns it off or points at other files.
+
+### Images
+
+Copy one or more images in Files, copy a path to one, or copy an image
+itself (a screenshot, a picture from a web page), then:
+
+| Type | Result |
+|---|---|
+| `img 50%`, `img 800`, `img x600`, `img 800x600` | half size, 800 px wide, 600 px high, fit inside 800×600 |
+| `img jpg`, `img png`, `img webp` | convert |
+| `img crop 1:1`, `img crop 16:9` | largest centred area of that shape |
+| `img crop 1200x630` | centred crop, then exactly that size |
+| `img trim` | cut away plain borders and empty margins |
+| `img rotate`, `img rotate left`, `img flip`, `img flip v` | turn or mirror |
+| `img strip` | remove metadata such as location and camera |
+
+Steps combine in the order you type them: `img crop 1:1 50% webp`. `img`
+alone lists the common ones. The row shows the result before you commit,
+e.g. `photo.jpg · 4032×3024 → 2016×1512 JPEG`.
+
+For files, Enter saves the results next to the originals as
+`photo-50.jpg`, `photo-1x1.jpg` or `photo.webp`, never over an existing file.
+With a single file, Tab copies the result to the clipboard instead, ready to
+paste into a chat or a document, or opens the original in an image editor
+you have installed. For an image on the clipboard it's the other way round:
+Enter puts the result back on the clipboard (screenshot, `img trim`, paste),
+and Tab saves it to Pictures as `clipboard-<time>.png`. Phone photos are turned upright first, and every result is
+saved without the original's metadata.
+
+Images go through gdk-pixbuf, which GTK already brings: PNG, JPEG, TIFF and
+BMP work everywhere, WebP when `webp-pixbuf-loader` is installed (most GNOME
+systems have it). JPEG and WebP are saved at quality 85. Animated GIFs keep
+their first frame only.
 
 ### IP addresses
 
@@ -479,6 +513,7 @@ processes = "ps"
 browser = "h"
 qr = "qr"
 ip = "ip"
+img = "img"
 
 [files]
 roots = ["~"]
@@ -770,7 +805,7 @@ crates/parsec/src
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
-│                    browser (Chromium and Firefox history and bookmarks), qr, ip,
+│                    browser (Chromium and Firefox history and bookmarks), qr, ip, img,
 │                    shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```

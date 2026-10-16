@@ -620,6 +620,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             v.ip,
             Box::new(|c: &mut Config, s: String| c.verbs.ip = s),
         ),
+        (
+            "Images (copied in Files)",
+            v.img,
+            Box::new(|c: &mut Config, s: String| c.verbs.img = s),
+        ),
     ] {
         let set = Rc::new(set);
         verbs.add(&text_row(

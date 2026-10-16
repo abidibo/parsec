@@ -179,6 +179,19 @@ Target: GNOME 46+, Wayland.
   api6.ipify.org, only under the verb, cached 5 min per route, off with
   `[ip] public_lookup`.
 
+- 2026-10-16: `img` verb, native, on gdk-pixbuf (no new dependency): input
+  is the clipboard's FileList from Files, or a copied path. Steps parsed in
+  typed order (crop ratio/exact, trim by corner-colour bounding box,
+  rotate, flip, percent/width/height/fit), optional format. Pixbuf isn't
+  Send, so load-process-save happens entirely in one spawn_blocking; only
+  paths and bytes cross. Output next to the original with a step suffix,
+  never overwriting; single image can go to the clipboard instead (wl-copy
+  with the format's mime). EXIF orientation applied on load; JPEG flattens
+  alpha onto white. Image data on the clipboard (no file) is read as a
+  texture, PNG-encoded off-thread, and goes back to the clipboard by
+  default. The copied images are cached until the clipboard's `changed`
+  signal or the verb is typed afresh, so typing steps stays instant.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

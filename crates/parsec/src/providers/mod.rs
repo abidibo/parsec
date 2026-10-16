@@ -6,6 +6,7 @@ pub mod browser;
 pub mod clipboard;
 pub mod files;
 pub mod github;
+pub mod img;
 pub mod infra;
 pub mod ip;
 pub mod keepass;
@@ -51,6 +52,7 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(browser::BrowserProvider::new(cfg.clone(), daemon)),
         Box::new(qr::QrProvider::new(cfg.clone())),
         Box::new(ip::IpProvider::new(cfg.clone())),
+        Box::new(img::ImgProvider::new(cfg.clone())),
         Box::new(infra::SshProvider::new(cfg.clone())),
         Box::new(infra::DockerProvider::new(cfg.clone())),
         Box::new(infra::ServicesProvider::new(cfg.clone())),

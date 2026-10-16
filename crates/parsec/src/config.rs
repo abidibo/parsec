@@ -302,6 +302,7 @@ pub struct Verbs {
     pub browser: String,
     pub qr: String,
     pub ip: String,
+    pub img: String,
 }
 
 impl Default for Clipboard {
@@ -333,6 +334,7 @@ impl Default for Verbs {
             browser: "h".into(),
             qr: "qr".into(),
             ip: "ip".into(),
+            img: "img".into(),
         }
     }
 }
@@ -545,6 +547,7 @@ processes = {v_processes}
 browser = {v_browser}
 qr = {v_qr}
 ip = {v_ip}
+img = {v_img}
 
 [files]
 # Only show files under these folders ("~" allowed). Empty = anywhere.
@@ -639,6 +642,7 @@ disabled = {plugins_disabled}
             v_browser = toml_str(&self.verbs.browser),
             v_qr = toml_str(&self.verbs.qr),
             v_ip = toml_str(&self.verbs.ip),
+            v_img = toml_str(&self.verbs.img),
             ip_public = self.ip.public_lookup,
             br_enabled = self.browser.enabled,
             br_known = crate::providers::browser::known().join(", "),
