@@ -2,8 +2,9 @@
 //
 // Exports org.abidibo.Parsec.Shell on the session bus. The launcher (a
 // separate GTK process) calls it for the things a Wayland client cannot do
-// on its own: list and focus windows, type Ctrl+V into whatever has focus,
-// and hear about clipboard changes without polling. There is no UI and no
+// on its own: list and focus windows, see which apps are open and ask them
+// to quit, type Ctrl+V into whatever has focus, and hear about clipboard
+// changes without polling. There is no UI and no
 // logic beyond that; the daemon decides what to show and when.
 
 import Clutter from 'gi://Clutter';
@@ -17,7 +18,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'org.abidibo.Parsec.Shell';
 const OBJECT_PATH = '/org/abidibo/Parsec/Shell';
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const IFACE = `
 <node>
@@ -32,6 +33,13 @@ const IFACE = `
     </method>
     <method name="CloseWindow">
       <arg type="t" direction="in" name="id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="RunningApps">
+      <arg type="a{sau}" direction="out" name="apps"/>
+    </method>
+    <method name="QuitApp">
+      <arg type="s" direction="in" name="id"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
     <method name="Paste">
@@ -152,6 +160,29 @@ class Service {
             return false;
         w.delete(global.get_current_time());
         return true;
+    }
+
+    // ------------------------------------------------------------ apps
+
+    // Apps with open windows, by desktop id, with the pids of those windows.
+    RunningApps() {
+        const out = {};
+        for (const app of Shell.AppSystem.get_default().get_running()) {
+            const id = app.get_id();
+            if (!id || id.toLowerCase().startsWith(PARSEC_CLASS))
+                continue;
+            out[id] = app.get_pids();
+        }
+        return out;
+    }
+
+    // What the dash's Quit does: the app's own quit action when it has one,
+    // else closing its windows. The app may still ask to save.
+    QuitApp(id) {
+        const app = Shell.AppSystem.get_default().lookup_app(id);
+        if (!app || app.get_state() !== Shell.AppState.RUNNING)
+            return false;
+        return app.request_quit();
     }
 
     // ------------------------------------------------------------ clipboard

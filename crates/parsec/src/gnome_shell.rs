@@ -221,6 +221,29 @@ impl Bridge {
         self.fire("CloseWindow", Some(&(id,).to_variant()))
     }
 
+    /// Apps with open windows, by desktop id, with their windows' pids.
+    /// Empty without the extension, or with one older than 0.2.0.
+    pub async fn running_apps(&self) -> HashMap<String, Vec<u32>> {
+        let Ok(proxy) = self.proxy() else {
+            return HashMap::new();
+        };
+        match proxy
+            .call_future("RunningApps", None, gio::DBusCallFlags::NONE, 1000)
+            .await
+        {
+            Ok(reply) => reply.child_value(0).get().unwrap_or_default(),
+            Err(e) => {
+                tracing::debug!("RunningApps failed: {e}");
+                HashMap::new()
+            }
+        }
+    }
+
+    /// Ask an app to quit, as the dash's Quit does.
+    pub fn quit_app(&self, id: &str) -> Result<()> {
+        self.fire("QuitApp", Some(&(id,).to_variant()))
+    }
+
     /// Put `text` on the clipboard and type the paste shortcut into the
     /// window that has focus once the launcher is hidden.
     pub fn paste(&self, text: &str) -> Result<()> {

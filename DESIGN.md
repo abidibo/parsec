@@ -127,6 +127,15 @@ Target: GNOME 46+, Wayland.
   costs a keystroke; re-read on mtime change, at most once a minute.
   Opens with the browser's own desktop entry. Frecency ids are hashed.
 
+- 2026-10-16: Quit and Force quit on running apps (Tab). Extension 0.2.0
+  adds `RunningApps` (desktop id → window pids, from Shell.AppSystem) and
+  `QuitApp` (Shell.App.request_quit, the dash's Quit). The apps provider
+  caches the running list for 1 s, only to decide which rows get the
+  actions; Force quit asks for the pids again at the moment it runs, so a
+  stale pid is never killed. SIGKILL is sent by Parsec, not the extension.
+  An older extension makes `RunningApps` fail: no actions, nothing else
+  changes. Enter on a running app still launches; `win` switches.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

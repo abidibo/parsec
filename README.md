@@ -290,6 +290,11 @@ have next to a fresh launch. `win` on its own lists every window, most
 recent first; `win mail` filters. Enter switches to the window, changing
 workspace if needed; Tab offers *Close window*.
 
+An app with windows open says *Running* under its name, and Tab on it offers
+*Quit*, which works like Quit in the dash (the app may still ask to save),
+and *Force quit*, which sends SIGKILL to the processes owning its windows.
+Enter still launches it.
+
 ### System controls
 
 `sys` lists toggles with their current state and one-shot commands. Enter on
@@ -477,7 +482,7 @@ when there is nothing to run. Some terminals:
 Parsec is a normal GTK application, and on Wayland that means it cannot see
 other windows, type into them, or watch the clipboard on GNOME before 48.
 A small optional extension, `data/extension/parsec@abidibo.org`, runs
-inside GNOME Shell and lends Parsec those three abilities over D-Bus. It has
+inside GNOME Shell and lends Parsec those abilities over D-Bus. It has
 no interface of its own, and Parsec works unchanged without it: no window
 results, Enter copies instead of pasting, and the clipboard is polled on
 GNOME 46 and 47.
@@ -500,7 +505,8 @@ or Hyprland, nothing changes.
 
 What it gives you:
 
-- **Windows** as results, see [above](#windows).
+- **Windows** as results, and Quit / Force quit on running apps, see
+  [above](#windows). Quitting apps needs extension 0.2.0 or later.
 - **Paste**: clipboard entries, snippets and KeePass passwords land in the
   window you came from. Parsec hides, the extension waits for focus to return, then types
   Ctrl+V, or Ctrl+Shift+V when that window is a terminal.
