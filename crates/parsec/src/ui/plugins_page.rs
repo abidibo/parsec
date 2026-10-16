@@ -1,5 +1,5 @@
-//! Settings › Plugins: installed plugins with enable/remove, and install
-//! from a zip, a folder, or a git URL.
+//! Settings › Plugins: installed plugins with an on/off switch and a menu
+//! (settings, folder, remove), and install from a zip, a folder, or a git URL.
 
 use crate::config::SharedConfig;
 use crate::plugins;
@@ -260,55 +260,72 @@ fn refresh(
                 c.save();
             }
         ));
-        row.add_suffix(&switch);
-
+        // Every row ends the same way, a menu then the switch, so the
+        // switches line up whatever each plugin offers.
+        let actions = gtk::gio::SimpleActionGroup::new();
+        let menu = gtk::gio::Menu::new();
         if !m.config.is_empty() {
-            let settings = gtk::Button::builder()
-                .icon_name("document-edit-symbolic")
-                .valign(gtk::Align::Center)
-                .css_classes(["flat"])
-                .tooltip_text("Edit settings")
-                .build();
+            let settings = gtk::gio::SimpleAction::new("settings", None);
             let plugin = p.clone();
-            settings.connect_clicked(move |_| match plugins::ensure_settings(&plugin) {
-                Ok(path) => {
-                    let uri = format!("file://{}", path.display());
-                    let _ = gtk::gio::AppInfo::launch_default_for_uri(
-                        &uri,
-                        gtk::gio::AppLaunchContext::NONE,
-                    );
-                }
+            settings.connect_activate(move |_, _| match plugins::ensure_settings(&plugin) {
+                Ok(path) => open_path(&path),
                 Err(e) => tracing::warn!("{e:#}"),
             });
-            row.add_suffix(&settings);
+            actions.add_action(&settings);
+            menu.append(Some("Edit settings"), Some("plugin.settings"));
         }
+        let folder = gtk::gio::SimpleAction::new("folder", None);
+        let dir = p.dir.clone();
+        folder.connect_activate(move |_, _| open_path(&dir));
+        actions.add_action(&folder);
+        menu.append(Some("Open folder"), Some("plugin.folder"));
 
-        let remove = gtk::Button::builder()
-            .icon_name("user-trash-symbolic")
-            .valign(gtk::Align::Center)
-            .css_classes(["flat"])
-            .tooltip_text("Remove")
-            .build();
+        let remove = gtk::gio::SimpleAction::new("remove", None);
         let id = m.id.clone();
-        remove.connect_clicked(glib::clone!(
+        remove.connect_activate(glib::clone!(
             #[strong]
             group,
             #[strong]
             rows,
             #[strong]
             cfg,
-            move |_| {
+            move |_, _| {
                 if let Err(e) = plugins::remove(&id) {
                     tracing::warn!("{e:#}");
                 }
-                refresh(&group, &rows, &cfg);
+                // Not while the menu that asked is still closing.
+                let (group, rows, cfg) = (group.clone(), rows.clone(), cfg.clone());
+                glib::idle_add_local_once(move || refresh(&group, &rows, &cfg));
             }
         ));
-        row.add_suffix(&remove);
+        actions.add_action(&remove);
+        let danger = gtk::gio::Menu::new();
+        danger.append(Some("Remove"), Some("plugin.remove"));
+        menu.append_section(None, &danger);
+        row.insert_action_group("plugin", Some(&actions));
+
+        let more = gtk::MenuButton::builder()
+            .icon_name("view-more-symbolic")
+            .menu_model(&menu)
+            .valign(gtk::Align::Center)
+            .css_classes(["flat"])
+            .tooltip_text("More")
+            .build();
+        row.add_suffix(&more);
+        row.add_suffix(&switch);
         group.add(&row);
         new_rows.push(row);
     }
     *rows.borrow_mut() = new_rows;
+}
+
+fn open_path(path: &std::path::Path) {
+    let uri = format!("file://{}", path.display());
+    if let Err(e) =
+        gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE)
+    {
+        tracing::warn!("opening {}: {e}", path.display());
+    }
 }
 
 fn link_row(title: &str, icon: &str) -> adw::ActionRow {
