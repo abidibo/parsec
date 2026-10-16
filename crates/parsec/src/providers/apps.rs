@@ -196,6 +196,7 @@ impl Provider for AppsProvider {
                     actions.extend(quit_actions(desktop_id));
                 }
                 Some(Item {
+                    body: None,
                     id: e.id.clone(),
                     title: e.name.clone(),
                     subtitle,

@@ -155,6 +155,14 @@ Target: GNOME 46+, Wayland.
   off-thread, ~40 ms); the password is copied only as a secret and never
   logged or written to disk unless you save the image.
 
+- 2026-10-16: slow plugins. A `browse` action with `"slow": true` gets
+  120 s and may stream `progress` lines (each replaces the level's items)
+  before `results`. Cancel is kill-and-restart, not a protocol message, so
+  plugins stay single-threaded: Level owns the load's JoinHandle; leaving
+  the level or hiding aborts it, and a guard in the plugin host stops the
+  process (not a failure). Items gained `body` (plugin `text`): wrapped
+  multi-line text under the title. Queries keep the 3 s limit.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

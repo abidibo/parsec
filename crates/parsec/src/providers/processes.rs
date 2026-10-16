@@ -171,6 +171,7 @@ impl ProcessesProvider {
                     ),
                 };
                 Item {
+                    body: None,
                     id: format!("port:{port}"),
                     title,
                     subtitle: Some(subtitle),
@@ -479,6 +480,7 @@ impl Provider for ProcessesProvider {
                 };
                 let ports: String = p.ports.iter().map(|port| format!(":{port} · ")).collect();
                 Some(Item {
+                    body: None,
                     id: format!("proc:{}", p.name),
                     title: p.name.clone(),
                     subtitle: Some(format!(

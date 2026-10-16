@@ -163,6 +163,7 @@ impl BrowserProvider {
             },
         };
         Item {
+            body: None,
             // Hashed: the frecency file must not list the pages you visit.
             // Shared by a page's history and bookmark rows.
             id: format!("web:{}", crate::core::secrets::hash(&e.url)),

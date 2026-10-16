@@ -43,7 +43,7 @@ pub const USER_CSS_TEMPLATE: &str = r#"/* Parsec user stylesheet. Reloaded live 
      window.parsec  .parsec-panel  .parsec-search  .parsec-entry  .parsec-chip
      .parsec-results row (:selected)  .parsec-tile  .parsec-title
      .parsec-subtitle  .parsec-action  .parsec-section  .parsec-empty
-     .parsec-picture
+     .parsec-picture  .parsec-body
      .parsec-welcome  .parsec-footer  .parsec-key
 */
 
@@ -195,6 +195,11 @@ window.parsec {
     font-size: 12px;
     color: @parsec_dim;
 }
+.parsec-body {
+    font-size: 13px;
+    color: @parsec_fg;
+    margin: 6px 0 10px 0;
+}
 .parsec-picture {
     margin-top: 12px;
     border-radius: 8px;
@@ -330,6 +335,18 @@ struct Level {
     /// What the entry held when this level was opened, put back on leaving.
     entry_before: String,
     chip_before: Option<(String, String)>,
+    /// The load, still running while `loading`. Dropping the level aborts
+    /// it, which is how a slow plugin learns to stop.
+    task: Option<glib::JoinHandle<()>>,
+    loading: bool,
+}
+
+impl Drop for Level {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -722,6 +739,7 @@ impl LauncherWindow {
         if self.prompt.borrow().is_some() {
             self.leave_prompt(false);
         }
+        self.cancel_loads();
         self.list.remove_css_class("show-numbers");
         self.window.set_visible(false);
     }
@@ -810,8 +828,17 @@ impl LauncherWindow {
         }
         let none = hits.is_empty();
         let in_prompt = self.prompt.borrow().is_some();
+        let waiting = self.levels.borrow().last().filter(|l| l.loading).map(|l| {
+            l.browse
+                .waiting
+                .clone()
+                .unwrap_or_else(|| "Loading…".into())
+        });
         self.scroller.set_visible(!none);
-        self.empty.set_visible(none && !query_empty && !in_prompt);
+        self.empty
+            .set_label(waiting.as_deref().unwrap_or("No results"));
+        self.empty
+            .set_visible(none && (waiting.is_some() || !query_empty) && !in_prompt);
         self.welcome.set_visible(
             none && query_empty && !in_prompt && self.verb.borrow().is_none() && !self.in_browse(),
         );
@@ -923,6 +950,8 @@ impl LauncherWindow {
             entry_before: self.entry.text().to_string(),
             chip_before,
             browse: browse.clone(),
+            task: None,
+            loading: true,
         });
         *self.verb.borrow_mut() = None;
         self.chip.set_label(&browse.title);
@@ -934,17 +963,50 @@ impl LauncherWindow {
         let gen = self.generation.get() + 1;
         self.generation.set(gen);
         let depth = self.levels.borrow().len();
+        // Still this level, not one opened or closed since.
+        let current = {
+            let this = self.clone();
+            move || this.generation.get() == gen && this.levels.borrow().len() == depth
+        };
+        let progress: crate::core::Progress = Rc::new({
+            let (this, current) = (self.clone(), current.clone());
+            move |items| {
+                if !current() {
+                    return;
+                }
+                if let Some(level) = this.levels.borrow_mut().last_mut() {
+                    level.items = items;
+                }
+                this.render_level();
+            }
+        });
         let this = self.clone();
-        glib::spawn_future_local(async move {
-            let items = (browse.load)().await;
-            if this.generation.get() != gen || this.levels.borrow().len() != depth {
+        let task = glib::spawn_future_local(async move {
+            let items = (browse.load)(progress).await;
+            if !current() {
                 return;
             }
             if let Some(level) = this.levels.borrow_mut().last_mut() {
                 level.items = items;
+                level.loading = false;
             }
             this.render_level();
         });
+        if let Some(level) = self.levels.borrow_mut().last_mut() {
+            level.task = Some(task);
+        }
+        // An empty level while loading shows the waiting message.
+        self.render(Vec::new(), true);
+    }
+
+    /// Stop every load still running, e.g. because the launcher hid.
+    fn cancel_loads(&self) {
+        for level in self.levels.borrow_mut().iter_mut() {
+            if let Some(task) = level.task.take() {
+                task.abort();
+            }
+            level.loading = false;
+        }
     }
 
     /// Show the innermost level filtered by the entry text.
@@ -961,7 +1023,7 @@ impl LauncherWindow {
 
     /// Pop a level: back to the parent list, or to the search.
     fn leave_browse(&self) {
-        let Some(level) = self.levels.borrow_mut().pop() else {
+        let Some(mut level) = self.levels.borrow_mut().pop() else {
             return;
         };
         self.generation.set(self.generation.get() + 1);
@@ -973,7 +1035,7 @@ impl LauncherWindow {
             self.render_level();
             return;
         }
-        self.set_chip(level.chip_before);
+        self.set_chip(level.chip_before.take());
         self.set_entry_text(&level.entry_before);
         self.search(&self.composed());
     }
@@ -1205,6 +1267,20 @@ fn row_for(hit: &Hit, index: usize, accent: &str) -> gtk::ListBoxRow {
                 .css_classes(["parsec-subtitle"])
                 .build(),
         );
+    }
+    if let Some(body) = item.body.as_deref().filter(|b| !b.is_empty()) {
+        // Wrapped in full; the list scrolls when it is long.
+        texts.append(
+            &gtk::Label::builder()
+                .label(body)
+                .wrap(true)
+                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                .xalign(0.0)
+                .halign(gtk::Align::Fill)
+                .css_classes(["parsec-body"])
+                .build(),
+        );
+        texts.set_valign(gtk::Align::Start);
     }
 
     let action = gtk::Label::builder()

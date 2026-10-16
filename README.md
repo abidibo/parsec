@@ -619,9 +619,12 @@ exactly one line on stdout:
 
 ```json
 {"title": "14", "subtitle": "2*(3+4) =", "icon": "optional", "id": "optional",
- "score": 500,
+ "score": 500, "text": "optional, several lines",
  "actions": [{"label": "Copy", "copy": "14"}]}
 ```
+
+`text` is shown in full under the title, wrapped, for answers and drafts
+that don't fit a one-line subtitle.
 
 Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
 out of the clipboard history and cleared after 15 s), `run` an argv array,
@@ -637,6 +640,29 @@ A `browse` action asks the plugin for a list to drill into. Parsec sends
 `results` message like the answer to a query. Its items are ordinary items,
 so they can `browse` again; the action's label names the list in the chip.
 The user filters it in place and steps back with Backspace or Esc.
+
+#### Slow answers
+
+Queries must stay fast, so work that takes seconds (asking an AI, a big
+search) belongs behind a `browse` action marked slow:
+
+```json
+{"label": "Ask", "browse": {"q": "..."}, "slow": true, "waiting": "Thinking…"}
+```
+
+A slow browse may take up to two minutes. The level opens at once and shows
+`waiting` (default "Working…") until items arrive, and before its final
+`results` line the plugin may send any number of
+
+```json
+{"type": "progress", "items": [{"title": "Claude", "text": "The answer so f"}]}
+```
+
+each replacing what the level shows, so an answer can appear as it is
+written. Send one every 100 ms or so, not one per token. If the user leaves
+the level or the launcher hides first, Parsec kills the plugin; it restarts
+on the next query and that is not counted as a failure, so a plugin can
+stay single-threaded and never needs to handle cancellation.
 
 Rules of the road: answer within three seconds or the query is dropped and
 the plugin restarted; three failures in a row disable it until Parsec restarts;

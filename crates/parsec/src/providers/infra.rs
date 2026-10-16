@@ -192,6 +192,7 @@ impl Provider for SshProvider {
                     format!("{}@{}", h.user, h.hostname)
                 };
                 Some(Item {
+                    body: None,
                     id: format!("ssh:{}", h.alias),
                     title: h.alias.clone(),
                     subtitle: (!target.is_empty()).then_some(target.clone()),
@@ -205,6 +206,7 @@ impl Provider for SshProvider {
         if !q.is_empty() && items.is_empty() && !q.text.contains(char::is_whitespace) {
             let target = q.text.trim().to_string();
             items.push(Item {
+                body: None,
                 id: "ssh:adhoc".into(),
                 title: format!("ssh {target}"),
                 subtitle: Some("Not in ~/.ssh/config".into()),
@@ -401,6 +403,7 @@ impl Provider for DockerProvider {
                 let running = c.state == "running";
                 let actions = container_actions(&cfg, &c);
                 Some(Item {
+                    body: None,
                     id: format!("docker:{}", c.names),
                     title: c.names.clone(),
                     subtitle: Some(format!("{} · {}", c.image, c.status)),
@@ -572,6 +575,7 @@ impl Provider for ServicesProvider {
                     });
                 }
                 Some(Item {
+                    body: None,
                     id: format!("service:{scope}:{}", u.unit),
                     title: name,
                     subtitle: Some(format!(

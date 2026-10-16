@@ -107,6 +107,7 @@ impl Provider for WindowsProvider {
                     w.app_id.clone()
                 };
                 Some(Item {
+                    body: None,
                     id: format!("win:{key}"),
                     title: w.title.clone(),
                     subtitle: Some(subtitle(&w)),

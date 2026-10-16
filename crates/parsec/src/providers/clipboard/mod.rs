@@ -136,6 +136,7 @@ impl Provider for ClipboardProvider {
                 };
                 let score = if e.pinned { base + base / 4 } else { base };
                 Some(Item {
+                    body: None,
                     id: e.id(),
                     title: first_line(&e.text, 90),
                     subtitle: Some(describe(e)),

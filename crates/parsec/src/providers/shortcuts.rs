@@ -102,6 +102,7 @@ impl ShortcutsProvider {
                 }),
             };
             return Item {
+                body: None,
                 id,
                 title: s.name.clone(),
                 subtitle: Some("Type what to search, then Enter".into()),
@@ -114,6 +115,7 @@ impl ShortcutsProvider {
             };
         }
         Item {
+            body: None,
             id,
             title: if query.is_empty() {
                 s.name.clone()

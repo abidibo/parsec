@@ -120,6 +120,7 @@ impl Provider for ProjectsProvider {
                 let score = if q.is_empty() { 1 } else { q.score(&r.name)? };
                 let path = r.path.to_string_lossy();
                 Some(Item {
+                    body: None,
                     id: format!("project:{}", r.path.display()),
                     title: r.name.clone(),
                     subtitle: Some(r.shown.clone()),
@@ -229,6 +230,7 @@ fn branches(cfg: SharedConfig, repo: PathBuf) -> Browse {
                     let target = name.rsplit_once('/').map_or(name.as_str(), |(_, b)| b);
                     let switch = format!("git switch {}", shlex::try_quote(target).ok()?);
                     Some(Item {
+                        body: None,
                         id: format!("branch:{}:{name}", repo.display()),
                         title: name.clone(),
                         subtitle: Some(if current {
@@ -282,6 +284,7 @@ fn commits(cfg: SharedConfig, repo: PathBuf) -> Browse {
                     let author = f.next().unwrap_or("").to_string();
                     let when = f.next().unwrap_or("").to_string();
                     Some(Item {
+                        body: None,
                         id: format!("commit:{}:{hash}", repo.display()),
                         title: subject,
                         subtitle: Some(format!("{hash} · {author}, {when}")),
@@ -391,6 +394,7 @@ fn folder_entry(cfg: &SharedConfig, path: PathBuf, is_dir: bool) -> Item {
         Icon::GIcon(gio::content_type_get_icon(&kind))
     };
     Item {
+        body: None,
         id: format!("file:{shown}"),
         title: name,
         subtitle: Some(config::abbreviate_home(&path)),
@@ -434,7 +438,9 @@ mod tests {
 
     #[test]
     fn branches_list_marks_the_current_one() {
-        let items = glib::MainContext::new().block_on((branches(cfg(), repo_root()).load)());
+        let items = glib::MainContext::new().block_on((branches(cfg(), repo_root()).load)(
+            std::rc::Rc::new(|_| {}),
+        ));
         assert!(!items.is_empty());
         let current: Vec<&Item> = items
             .iter()
@@ -451,7 +457,8 @@ mod tests {
 
     #[test]
     fn folder_browse_nests() {
-        let items = glib::MainContext::new().block_on((folder(cfg(), repo_root()).load)());
+        let items = glib::MainContext::new()
+            .block_on((folder(cfg(), repo_root()).load)(std::rc::Rc::new(|_| {})));
         let crates = items.iter().find(|i| i.title == "crates").unwrap();
         assert!(matches!(crates.actions[0].kind, ActionKind::Browse(_)));
         let readme = items.iter().find(|i| i.title == "README.md").unwrap();

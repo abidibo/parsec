@@ -22,6 +22,9 @@ pub struct Item {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
+    /// Longer text shown wrapped under the title (an answer, a draft),
+    /// as many lines as it takes.
+    pub body: Option<String>,
     pub icon: Icon,
     /// Raw relevance from the provider (fuzzy match score). Frecency is
     /// layered on top by the engine, never by the provider.
@@ -88,13 +91,20 @@ pub enum ActionKind {
 }
 
 /// A list to drill into. `load` runs when the level opens, so the items
-/// are fresh and nothing is computed for rows nobody expands.
+/// are fresh and nothing is computed for rows nobody expands. A slow load
+/// can show what it has so far through the `Progress` it is handed; the
+/// launcher drops the load (and with it the work) when the level closes.
 #[derive(Clone)]
 pub struct Browse {
     /// Shown in the chip while the level is open, e.g. "Branches".
     pub title: String,
-    pub load: Rc<dyn Fn() -> LocalFuture<Vec<Item>>>,
+    /// Shown while the list is empty and still loading, e.g. "Thinking…".
+    pub waiting: Option<String>,
+    pub load: Rc<dyn Fn(Progress) -> LocalFuture<Vec<Item>>>,
 }
+
+/// Replace the items a loading level shows, before its load finishes.
+pub type Progress = Rc<dyn Fn(Vec<Item>)>;
 
 impl Browse {
     pub fn new<F, Fut>(title: impl Into<String>, load: F) -> Self
@@ -104,7 +114,21 @@ impl Browse {
     {
         Self {
             title: title.into(),
-            load: Rc::new(move || Box::pin(load())),
+            waiting: None,
+            load: Rc::new(move |_| Box::pin(load())),
+        }
+    }
+
+    /// A load that reports partial lists while it works.
+    pub fn streaming<F, Fut>(title: impl Into<String>, waiting: Option<String>, load: F) -> Self
+    where
+        F: Fn(Progress) -> Fut + 'static,
+        Fut: std::future::Future<Output = Vec<Item>> + 'static,
+    {
+        Self {
+            title: title.into(),
+            waiting,
+            load: Rc::new(move |progress| Box::pin(load(progress))),
         }
     }
 }

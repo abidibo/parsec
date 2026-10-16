@@ -208,6 +208,7 @@ impl FilesProvider {
             kind: ActionKind::CopyText(p.clone()),
         });
         Item {
+            body: None,
             id: format!("file:{p}"),
             title: name,
             subtitle: Some(format!(

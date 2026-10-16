@@ -4,6 +4,12 @@
 //! message Parsec sends gets exactly one reply line. A plugin that fails
 //! to answer within the timeout is killed and restarted on the next query;
 //! after a few failures in a row it is left alone until Parsec restarts.
+//!
+//! A `browse` action marked `slow` (an AI answer, a big search) gets two
+//! minutes instead of three seconds, and until its `results` line the
+//! plugin may send `progress` lines that replace what the level shows.
+//! Closing the level or hiding the launcher kills the plugin mid-answer:
+//! it restarts on the next query, and that doesn't count as a failure.
 
 use super::SharedConfig;
 use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
@@ -21,6 +27,7 @@ use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
 const QUERY_TIMEOUT: Duration = Duration::from_millis(3000);
+const SLOW_TIMEOUT: Duration = Duration::from_secs(120);
 const INIT_TIMEOUT: Duration = Duration::from_millis(5000);
 const MAX_FAILURES: u32 = 3;
 
@@ -148,6 +155,9 @@ struct ReplyItem {
     title: String,
     #[serde(default)]
     subtitle: Option<String>,
+    /// Multi-line text shown wrapped under the title.
+    #[serde(default)]
+    text: Option<String>,
     #[serde(default)]
     icon: Option<String>,
     #[serde(default)]
@@ -178,6 +188,12 @@ struct ReplyAction {
     callback: Option<Value>,
     #[serde(default)]
     browse: Option<Value>,
+    /// On a `browse`: may take long and stream `progress` (see the top).
+    #[serde(default)]
+    slow: bool,
+    /// On a slow `browse`: shown until the first items arrive.
+    #[serde(default)]
+    waiting: Option<String>,
 }
 
 pub struct PluginHost {
@@ -344,6 +360,99 @@ async fn call(plugin: &Rc<RefCell<Plugin>>, msg: &Value) -> Result<Value, String
     result
 }
 
+/// Kills the plugin when a slow request is dropped before its reply: the
+/// level it was for closed, so the work is no longer wanted. Not a failure.
+struct Abandon {
+    plugin: Rc<RefCell<Plugin>>,
+    busy: Rc<Cell<bool>>,
+    armed: bool,
+}
+
+impl Drop for Abandon {
+    fn drop(&mut self) {
+        if self.armed {
+            if let Ok(mut p) = self.plugin.try_borrow_mut() {
+                tracing::info!(plugin = %p.info.manifest.id, "slow request cancelled");
+                p.stop();
+            }
+        }
+        self.busy.set(false);
+    }
+}
+
+/// Like `call`, for a slow request: a long timeout, and `progress` lines
+/// handed to `on_progress` until the final reply.
+async fn call_slow(
+    plugin: &Rc<RefCell<Plugin>>,
+    msg: &Value,
+    on_progress: &dyn Fn(Value),
+) -> Result<Value, String> {
+    let busy = plugin.borrow().busy.clone();
+    while busy.get() {
+        glib::timeout_future(Duration::from_millis(5)).await;
+    }
+    busy.set(true);
+    // Declared before the borrow below, so it drops after it on cancel.
+    let mut guard = Abandon {
+        plugin: plugin.clone(),
+        busy,
+        armed: true,
+    };
+    let result = {
+        let mut p = plugin.borrow_mut();
+        match p.running.as_mut() {
+            None => Err("plugin not running".to_string()),
+            Some(r) => {
+                let work = async {
+                    write_line(r, msg).await?;
+                    loop {
+                        let line = read_line(r).await.ok_or("plugin exited")?;
+                        let v: Value = serde_json::from_str(&line)
+                            .map_err(|e| format!("bad JSON reply: {e}"))?;
+                        if v.get("type").and_then(Value::as_str) == Some("progress") {
+                            on_progress(v);
+                            continue;
+                        }
+                        return Ok(v);
+                    }
+                };
+                let clock = glib::timeout_future(SLOW_TIMEOUT);
+                match select(Box::pin(work), clock).await {
+                    Either::Left((r, _)) => r,
+                    Either::Right(_) => Err(format!("no reply within {}s", SLOW_TIMEOUT.as_secs())),
+                }
+            }
+        }
+    };
+    guard.armed = false;
+    if let Err(e) = &result {
+        plugin
+            .borrow_mut()
+            .fail(&format!("{} failed: {e}", msg["type"]));
+    }
+    result
+}
+
+/// The items of a `results` or `progress` message.
+fn reply_items(
+    plugin: &Rc<RefCell<Plugin>>,
+    info: &Installed,
+    reply: Value,
+    text: &str,
+) -> Vec<Item> {
+    match serde_json::from_value::<Reply>(reply) {
+        Ok(r) => r
+            .items
+            .into_iter()
+            .map(|it| item(plugin, info, it, text))
+            .collect(),
+        Err(e) => {
+            tracing::warn!(plugin = %info.manifest.id, "bad results: {e}");
+            Vec::new()
+        }
+    }
+}
+
 /// A plugin's item as a core `Item`. Free-standing so a browsed list can
 /// build its own items, which can browse further.
 fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &str) -> Item {
@@ -408,27 +517,34 @@ fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &st
                     };
                     let msg =
                         json!({"type": "browse", "item": item_id, "data": data, "text": text});
-                    ActionKind::Browse(crate::core::Browse::new(title, move || {
-                        let (plugin, info, msg, text) =
-                            (plugin.clone(), info.clone(), msg.clone(), text.clone());
-                        async move {
-                            let Ok(reply) = call(&plugin, &msg).await else {
-                                return Vec::new();
-                            };
-                            let parsed: Reply = match serde_json::from_value(reply) {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    tracing::warn!(plugin = %info.manifest.id, "bad browse results: {e}");
-                                    return Vec::new();
+                    let browse = if a.slow {
+                        let waiting = a.waiting.or_else(|| Some("Working…".into()));
+                        crate::core::Browse::streaming(title, waiting, move |progress| {
+                            let (plugin, info, msg, text) =
+                                (plugin.clone(), info.clone(), msg.clone(), text.clone());
+                            async move {
+                                let sink = |v: Value| {
+                                    progress(reply_items(&plugin, &info, v, &text));
+                                };
+                                match call_slow(&plugin, &msg, &sink).await {
+                                    Ok(reply) => reply_items(&plugin, &info, reply, &text),
+                                    Err(e) => vec![problem(&info, &e)],
                                 }
-                            };
-                            parsed
-                                .items
-                                .into_iter()
-                                .map(|it| item(&plugin, &info, it, &text))
-                                .collect()
-                        }
-                    }))
+                            }
+                        })
+                    } else {
+                        crate::core::Browse::new(title, move || {
+                            let (plugin, info, msg, text) =
+                                (plugin.clone(), info.clone(), msg.clone(), text.clone());
+                            async move {
+                                match call(&plugin, &msg).await {
+                                    Ok(reply) => reply_items(&plugin, &info, reply, &text),
+                                    Err(_) => Vec::new(),
+                                }
+                            }
+                        })
+                    };
+                    ActionKind::Browse(browse)
                 } else {
                     return None;
                 };
@@ -453,10 +569,27 @@ fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &st
             id: format!("plugin:{}:{}", info.manifest.id, item_id),
             title: it.title,
             subtitle: it.subtitle.filter(|s| !s.is_empty()),
+            body: it.text.filter(|t| !t.is_empty()),
             icon,
             score: it.score.unwrap_or(500),
             actions,
         }
+    }
+}
+
+/// An informational row saying why a slow request gave nothing.
+fn problem(info: &Installed, why: &str) -> Item {
+    Item {
+        id: format!("plugin:{}:error", info.manifest.id),
+        title: format!("{} didn't answer", info.manifest.name),
+        subtitle: Some(why.to_string()),
+        body: None,
+        icon: Icon::Named("dialog-warning-symbolic".into()),
+        score: 1,
+        actions: vec![Action {
+            label: String::new(),
+            kind: ActionKind::Callback(Rc::new(|| Ok(()))),
+        }],
     }
 }
 
@@ -516,5 +649,104 @@ impl Provider for PluginHost {
             items.extend(self.ask(plugin, q).await);
         }
         items
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugins::Manifest;
+
+    /// Answers `init`, then any slow request with two progress lines and a
+    /// result. Sleeps between lines so a test can cancel mid-answer.
+    const SLOW_PLUGIN: &str = r#"#!/usr/bin/env python3
+import json, sys, time
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg["type"] == "init":
+        print(json.dumps({"type": "ready"}), flush=True)
+        continue
+    for part in ["Hel", "Hello"]:
+        print(json.dumps({"type": "progress", "items": [{"title": "A", "text": part}]}), flush=True)
+        time.sleep(0.2)
+    print(json.dumps({"type": "results", "items": [{"title": "A", "text": "Hello!"}]}), flush=True)
+"#;
+
+    fn plugin(name: &str) -> (Rc<RefCell<Plugin>>, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("parsec-plugin-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let exec = dir.join("main.py");
+        std::fs::write(&exec, SLOW_PLUGIN).unwrap();
+        std::fs::set_permissions(&exec, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let manifest = Manifest {
+            id: name.into(),
+            name: name.into(),
+            exec: "main.py".into(),
+            ..Manifest::default()
+        };
+        let p = Rc::new(RefCell::new(Plugin::new(Installed {
+            manifest,
+            dir: dir.clone(),
+        })));
+        (p, dir)
+    }
+
+    async fn started(p: &Rc<RefCell<Plugin>>) {
+        let mut pl = p.borrow_mut();
+        assert!(pl.start());
+        let r = pl.running.as_mut().unwrap();
+        roundtrip(r, &json!({"type": "init"}), INIT_TIMEOUT)
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn slow_browse_streams_progress_then_results() {
+        let (p, dir) = plugin("slow");
+        glib::MainContext::new().block_on(async {
+            started(&p).await;
+            let seen = RefCell::new(Vec::new());
+            let sink = |v: Value| seen.borrow_mut().push(v["items"][0]["text"].clone());
+            let reply = call_slow(&p, &json!({"type": "browse"}), &sink)
+                .await
+                .unwrap();
+            assert_eq!(*seen.borrow(), vec![json!("Hel"), json!("Hello")]);
+            assert_eq!(reply["items"][0]["text"], "Hello!");
+            assert_eq!(p.borrow().failures, 0);
+            assert!(!p.borrow().busy.get());
+        });
+        p.borrow_mut().stop();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dropping_a_slow_request_stops_the_plugin_without_a_failure() {
+        let (p, dir) = plugin("cancel");
+        glib::MainContext::new().block_on(async {
+            started(&p).await;
+            let first = Rc::new(Cell::new(false));
+            let sink = {
+                let first = first.clone();
+                move |_: Value| first.set(true)
+            };
+            let msg = json!({"type": "browse"});
+            let request = Box::pin(call_slow(&p, &msg, &sink));
+            // Let it get the first progress line, then walk away.
+            let wait = Box::pin(async {
+                while !first.get() {
+                    glib::timeout_future(Duration::from_millis(10)).await;
+                }
+            });
+            match select(request, wait).await {
+                Either::Left(_) => panic!("finished before it could be cancelled"),
+                Either::Right((_, request)) => drop(request),
+            }
+            assert!(p.borrow().running.is_none(), "plugin still running");
+            assert_eq!(p.borrow().failures, 0);
+            assert!(!p.borrow().busy.get());
+        });
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

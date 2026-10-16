@@ -191,6 +191,7 @@ impl Provider for QrProvider {
             Ok(t) => t,
             Err(why) => {
                 return vec![Item {
+                    body: None,
                     id: "qr:code".into(),
                     title: why,
                     subtitle: Some(subtitle),
@@ -202,6 +203,7 @@ impl Provider for QrProvider {
         };
         let (for_copy, for_save) = (texture.clone(), texture.clone());
         vec![Item {
+            body: None,
             // One id for every code: frecency learns the verb, not the text.
             id: "qr:code".into(),
             title: one_line(&text, 80),
@@ -369,6 +371,7 @@ fn wifi_item(found: Result<Wifi, String>) -> Item {
         Ok(w) => w,
         Err(why) => {
             return Item {
+                body: None,
                 id: "qr:wifi".into(),
                 title: why,
                 subtitle: Some("Wi-Fi QR code".into()),
@@ -413,6 +416,7 @@ fn wifi_item(found: Result<Wifi, String>) -> Item {
         });
     }
     Item {
+        body: None,
         id: "qr:wifi".into(),
         title: w.ssid.clone(),
         subtitle: Some(format!("Wi-Fi · {security}{hidden} · scan to join")),

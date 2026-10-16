@@ -143,6 +143,7 @@ impl Provider for ShellProvider {
         let mut items = Vec::new();
         if !cmd.is_empty() {
             items.push(Item {
+                body: None,
                 // Stable id so frecency learns that you use the shell verb,
                 // not every distinct command line.
                 id: "shell:run".into(),
@@ -182,6 +183,7 @@ impl Provider for ShellProvider {
                 sub.push(format!("{}×", e.count));
             }
             Some(Item {
+                body: None,
                 // Hashed: the frecency file must not list command lines.
                 id: format!("shell:hist:{}", crate::core::secrets::hash(&e.cmd)),
                 title: e.cmd.lines().next().unwrap_or("").to_string(),
