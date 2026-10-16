@@ -374,11 +374,26 @@ launcher is open, typing `parsec`, or `parsec settings` in a shell.
 
 Once a day Parsec asks GitHub for its latest release. When there is a
 newer one the gear in the footer turns accent coloured, `parsec` lists an
-*Update Parsec* entry that copies the [install command](#install) (or opens
-the releases page), the settings card links
-to it, and you get one desktop notification per version. Nothing but the
-version is sent. Turn it off in Settings › Launcher or with `[updates]
-check = false`. Builds without a release tag never check.
+*Update Parsec* entry, the settings card shows an *Update* button, and you
+get one desktop notification per version, with an *Update* button too.
+Update opens your terminal on the [install script](#install), pinned to the
+new version: you watch it download, check and install, Parsec restarts, and
+the terminal waits for Enter. Tab on the entry copies the install command
+or opens the releases page instead. Parsec offers the button only when it
+runs from `~/.local/bin/parsec`, where the script installs it; a build from
+a checkout, `cargo install` or a package gets the copy-the-command entry.
+Nothing but the version is sent. Turn it off in Settings › Launcher or
+with `[updates] check = false`. Builds without a release tag never check.
+
+To try the update flow without a new release, build an older-looking
+binary and let it find the current one:
+
+```sh
+PARSEC_VERSION=1.0.0 cargo build --release
+pkill -x parsec; install -m755 target/release/parsec ~/.local/bin/parsec
+~/.local/bin/parsec --background &
+# about 30 s later: `parsec` in the launcher offers the update
+```
 
 The settings window edits `~/.config/parsec/config.toml`. Changes save
 immediately and the running daemon reloads them; the file is also fine to edit

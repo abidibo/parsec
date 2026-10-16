@@ -75,16 +75,27 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
     app
 }
 
-/// `app.preferences` opens the settings window, `app.quit` stops the daemon.
-/// Reachable from the launcher (Ctrl+,), the system provider and the CLI.
+/// `app.preferences` opens the settings window, `app.quit` stops the daemon,
+/// `app.update` installs the release the update check found. Reachable from
+/// the launcher (Ctrl+,), the system provider, notifications and the CLI.
 fn register_actions(app: &adw::Application, cfg: providers::SharedConfig) {
     let prefs = gio::SimpleAction::new("preferences", None);
     prefs.connect_activate(glib::clone!(
         #[weak]
         app,
+        #[strong]
+        cfg,
         move |_, _| crate::ui::preferences::open(&app, cfg.clone())
     ));
     app.add_action(&prefs);
+
+    let update = gio::SimpleAction::new("update", None);
+    update.connect_activate(move |_, _| {
+        if let Err(e) = crate::update::install(&cfg.borrow()) {
+            tracing::warn!("update: {e:#}");
+        }
+    });
+    app.add_action(&update);
 
     let quit = gio::SimpleAction::new("quit", None);
     quit.connect_activate(glib::clone!(

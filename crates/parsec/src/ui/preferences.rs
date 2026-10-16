@@ -661,6 +661,25 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
             .css_classes(["caption"])
             .build();
         card.append(&link);
+        if crate::update::can_install() {
+            let button = gtk::Button::builder()
+                .label(format!("Update to {}", u.latest))
+                .tooltip_text("Runs the install script in your terminal; Parsec restarts")
+                .halign(gtk::Align::Center)
+                .css_classes(["suggested-action", "pill"])
+                .build();
+            button.connect_clicked(glib::clone!(
+                #[weak]
+                window,
+                move |_| {
+                    if let Some(app) = window.application() {
+                        app.activate_action("update", None);
+                    }
+                    window.close();
+                }
+            ));
+            card.append(&button);
+        }
     }
     about.add(&card);
     page.add(&about);

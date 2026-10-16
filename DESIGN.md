@@ -136,6 +136,14 @@ Target: GNOME 46+, Wayland.
   An older extension makes `RunningApps` fail: no actions, nothing else
   changes. Enter on a running app still launches; `win` switches.
 
+- 2026-10-16: Update button (launcher entry, settings card,
+  notification button via `app.update`). Runs install.sh in the configured
+  terminal pinned with PARSEC_VERSION, not in the background: the script
+  may need sudo to build from source, and it kills the daemon that would
+  otherwise own its output. Offered only when current_exe is
+  ~/.local/bin/parsec, so it never overwrites an install the script
+  doesn't manage. Testable with a `PARSEC_VERSION=1.0.0` build.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

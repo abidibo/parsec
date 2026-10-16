@@ -1,4 +1,4 @@
-//! Parsec's own entries: settings and quit. They talk to the application
+//! Parsec's own entries: settings, quit and update. They talk to the application
 //! through GActions, so this provider has no handle on any window.
 
 use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
@@ -70,25 +70,38 @@ impl Provider for SystemProvider {
                 .into_iter()
                 .chain(q.score_any(["update", "upgrade", "version", "parsec"]))
                 .max()?;
+            let installable = crate::update::can_install();
+            let mut actions = Vec::new();
+            if installable {
+                actions.push(Action {
+                    label: "Update".into(),
+                    kind: app_action("update"),
+                });
+            }
+            actions.extend([
+                Action {
+                    label: "Copy install command".into(),
+                    kind: ActionKind::CopyText(crate::update::INSTALL_COMMAND.into()),
+                },
+                Action {
+                    label: "Releases".into(),
+                    kind: ActionKind::OpenUri(crate::update::RELEASES_URL.into()),
+                },
+            ]);
             Some(Item {
                 id: "system:update".into(),
                 title: format!("Update Parsec to {}", u.latest),
-                subtitle: Some(format!(
-                    "You have {}. Enter copies the install command; run it in a terminal",
-                    u.current
-                )),
+                subtitle: Some(if installable {
+                    format!("You have {}. Enter updates in a terminal", u.current)
+                } else {
+                    format!(
+                        "You have {}. Enter copies the install command; run it in a terminal",
+                        u.current
+                    )
+                }),
                 icon: Icon::Named("software-update-available-symbolic".into()),
                 score,
-                actions: vec![
-                    Action {
-                        label: "Copy install command".into(),
-                        kind: ActionKind::CopyText(crate::update::INSTALL_COMMAND.into()),
-                    },
-                    Action {
-                        label: "Releases".into(),
-                        kind: ActionKind::OpenUri(crate::update::RELEASES_URL.into()),
-                    },
-                ],
+                actions,
             })
         });
         update
