@@ -7,6 +7,8 @@
 //! lose a home directory. A preview will need an explicit trigger.
 //!
 //! In a pipe, `$` takes the input itself: on stdin, or in place of `{}`.
+//! A folder piped in without `{}` is where the command runs instead, so
+//! `parsec ⇢ $ git status` works in the project.
 //! Committing a `$` row as a stage (Ctrl+Enter) is that explicit trigger:
 //! the command runs in the background and its stdout is handed on.
 
@@ -85,7 +87,17 @@ impl ShellProvider {
         *slot.borrow_mut() = Some(index);
     }
 
-    fn actions(&self, cmd: &str, input: Option<&str>) -> Vec<Action> {
+    /// Where a run starts and the input it still gets: a pipe's input
+    /// naming a folder becomes the working directory, unless the command
+    /// places it with `{}`.
+    fn place<'a>(&self, cmd: &str, input: Option<&'a str>) -> (String, Option<&'a str>) {
+        match input.filter(|_| !cmd.contains("{}")).and_then(folder) {
+            Some(dir) => (dir, None),
+            None => (self.home.clone(), input),
+        }
+    }
+
+    fn actions(&self, cmd: &str, input: Option<&str>, cwd: &str) -> Vec<Action> {
         if let Some(input) = input {
             return self.piped_actions(cmd, input);
         }
@@ -96,16 +108,19 @@ impl ShellProvider {
             "-ic".into(),
             format!("{cmd}; exec {}", self.shell),
         ];
-        let in_terminal = self.cfg.borrow().terminal_command(&self.home, &exec);
+        let in_terminal = ActionKind::Command(self.cfg.borrow().terminal_command(cwd, &exec));
         let background = vec![self.shell.clone(), "-c".into(), cmd.to_string()];
+        let cwd = cwd.to_string();
         vec![
             Action {
                 label: "Run in terminal".into(),
-                kind: self.recorded(cmd, ActionKind::Command(in_terminal)),
+                kind: self.recorded(cmd, move || crate::core::engine::run_detached(&in_terminal)),
             },
             Action {
                 label: "Run in background".into(),
-                kind: self.recorded(cmd, ActionKind::Command(background)),
+                kind: self.recorded(cmd, move || {
+                    crate::core::engine::spawn_in(&background, Some(&cwd))
+                }),
             },
             Action {
                 label: "Copy".into(),
@@ -161,38 +176,53 @@ impl ShellProvider {
     }
 
     /// Wrap a run so it lands in Parsec's own history first.
-    fn recorded(&self, cmd: &str, kind: ActionKind) -> ActionKind {
+    fn recorded(&self, cmd: &str, run: impl Fn() -> anyhow::Result<()> + 'static) -> ActionKind {
         let own = self.own.clone();
         let cmd = cmd.to_string();
         ActionKind::Callback(Rc::new(move || {
             own.borrow_mut().record(&cmd);
-            crate::core::engine::run_detached(&kind)
+            run()
         }))
     }
 
     /// Committing the row as a pipe stage: run it in the background and
     /// hand on its stdout.
-    fn output(&self, cmd: &str, input: Option<&str>) -> Output {
-        let (own, shell, home) = (self.own.clone(), self.shell.clone(), self.home.clone());
+    fn output(&self, cmd: &str, input: Option<&str>, cwd: &str) -> Output {
+        let (own, shell, cwd) = (self.own.clone(), self.shell.clone(), cwd.to_string());
         let (cmd, input) = (cmd.to_string(), input.map(str::to_string));
         Output::Later {
             waiting: format!("Running {}…", cmd.lines().next().unwrap_or("")),
             produce: Rc::new(move || {
                 own.borrow_mut().record(&cmd);
-                let (cmd, input, shell, home) =
-                    (cmd.clone(), input.clone(), shell.clone(), home.clone());
-                Box::pin(async move { capture(&cmd, input.as_deref(), &shell, &home).await })
+                let (cmd, input, shell, cwd) =
+                    (cmd.clone(), input.clone(), shell.clone(), cwd.clone());
+                Box::pin(async move { capture(&cmd, input.as_deref(), &shell, &cwd).await })
             }),
         }
     }
 
-    fn subtitle(base: &str, cmd: &str, input: Option<&str>) -> String {
+    fn subtitle(&self, base: &str, cmd: &str, input: Option<&str>, cwd: &str) -> String {
+        if cwd != self.home {
+            let dir = crate::config::abbreviate_home(std::path::Path::new(cwd));
+            return format!("{base} · in {dir}");
+        }
         match input {
             None => base.to_string(),
             Some(_) if cmd.contains("{}") => format!("{base} · input in {{}}"),
             Some(_) => format!("{base} · input on stdin"),
         }
     }
+}
+
+/// The folder a pipe's input names, if it is one: a single absolute or
+/// `~` path to an existing directory.
+fn folder(input: &str) -> Option<String> {
+    let line = input.trim();
+    if line.contains('\n') || !(line.starts_with('/') || line.starts_with('~')) {
+        return None;
+    }
+    let path = crate::config::expand_home(line);
+    path.is_dir().then(|| path.to_string_lossy().into_owned())
 }
 
 fn quote(s: &str) -> String {
@@ -258,14 +288,9 @@ impl Drop for KillOnDrop {
     }
 }
 
-/// Run `cmd` without a terminal and return its stdout. The input goes on
-/// stdin, or in place of `{}`.
-async fn capture(
-    cmd: &str,
-    input: Option<&str>,
-    shell: &str,
-    home: &str,
-) -> Result<String, String> {
+/// Run `cmd` in `cwd` without a terminal and return its stdout. The input
+/// goes on stdin, or in place of `{}`.
+async fn capture(cmd: &str, input: Option<&str>, shell: &str, cwd: &str) -> Result<String, String> {
     let (script, file, stdin) = match input {
         Some(input) if cmd.contains("{}") => {
             let (script, file) = with_input(cmd, input, shell).map_err(|e| e.to_string())?;
@@ -279,7 +304,7 @@ async fn capture(
             | gio::SubprocessFlags::STDOUT_PIPE
             | gio::SubprocessFlags::STDERR_PIPE,
     );
-    launcher.set_cwd(home);
+    launcher.set_cwd(cwd);
     let argv = [shell, "-c", script.as_str()].map(std::ffi::OsStr::new);
     let proc = launcher.spawn(&argv).map_err(|e| e.to_string())?;
     if let Some(pid) = proc.identifier().and_then(|p| p.parse().ok()) {
@@ -363,21 +388,21 @@ impl Provider for ShellProvider {
 
     async fn query(&self, q: &Query<'_>) -> Vec<Item> {
         let cmd = q.text.trim();
-        let input = q.input;
         let mut items = Vec::new();
         if !cmd.is_empty() {
+            let (cwd, input) = self.place(cmd, q.input);
             items.push(Item {
-                output: Some(self.output(cmd, input)),
+                output: Some(self.output(cmd, input, &cwd)),
                 preview: None,
                 body: None,
                 // Stable id so frecency learns that you use the shell verb,
                 // not every distinct command line.
                 id: "shell:run".into(),
                 title: cmd.to_string(),
-                subtitle: Some(Self::subtitle("Run in terminal", cmd, input)),
+                subtitle: Some(self.subtitle("Run in terminal", cmd, input, &cwd)),
                 icon: Icon::Named("utilities-terminal-symbolic".into()),
                 score: 1000,
-                actions: self.actions(cmd, input),
+                actions: self.actions(cmd, input, &cwd),
             });
         }
         if !self.cfg.borrow().history.enabled {
@@ -408,14 +433,15 @@ impl Provider for ShellProvider {
             if e.count > 1 {
                 sub.push(format!("{}×", e.count));
             }
+            let (cwd, input) = self.place(&e.cmd, q.input);
             Some(Item {
-                output: Some(self.output(&e.cmd, input)),
+                output: Some(self.output(&e.cmd, input, &cwd)),
                 preview: None,
                 body: None,
                 // Hashed: the frecency file must not list command lines.
                 id: format!("shell:hist:{}", crate::core::secrets::hash(&e.cmd)),
                 title: e.cmd.lines().next().unwrap_or("").to_string(),
-                subtitle: Some(Self::subtitle(
+                subtitle: Some(self.subtitle(
                     &if sub.is_empty() {
                         "History".into()
                     } else {
@@ -423,10 +449,11 @@ impl Provider for ShellProvider {
                     },
                     &e.cmd,
                     input,
+                    &cwd,
                 )),
                 icon: Icon::Named("document-open-recent-symbolic".into()),
                 score,
-                actions: self.actions(&e.cmd, input),
+                actions: self.actions(&e.cmd, input, &cwd),
             })
         }));
         items
@@ -472,6 +499,32 @@ mod tests {
             .unwrap();
         let _ = std::fs::remove_file(file.unwrap());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "2");
+    }
+
+    #[test]
+    fn runs_in_the_given_folder() {
+        assert_eq!(run("pwd", None).unwrap(), "/tmp");
+    }
+
+    #[test]
+    fn a_piped_folder_is_where_the_command_runs() {
+        let dir = std::env::temp_dir();
+        let dir = dir.to_string_lossy();
+        assert_eq!(folder(&dir).as_deref(), Some(&*dir));
+        assert_eq!(folder(&format!("{dir}\n")).as_deref(), Some(&*dir));
+        assert_eq!(
+            folder("~").as_deref(),
+            dirs::home_dir().as_deref().and_then(|h| h.to_str())
+        );
+    }
+
+    #[test]
+    fn other_input_is_not_a_folder() {
+        assert_eq!(folder("/etc/hostname"), None, "a file");
+        assert_eq!(folder("/no/such/folder"), None);
+        assert_eq!(folder("tmp"), None, "relative");
+        assert_eq!(folder("/tmp\n/etc"), None, "several lines");
+        assert_eq!(folder("hello world"), None);
     }
 
     #[test]

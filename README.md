@@ -214,20 +214,23 @@ flow. A verb receives the input like this:
   `tr >en` translates it
 - `$` takes it on stdin when there's no `{}` (`$ jq .data`, `$ wc -l`),
   and plugins that ask for it (`input = true`) get it apart from the text
+- a folder (a project, a folder from `f`) piped into `$` without `{}` is
+  where the command runs: `parsec` ⇢ `$ git status` runs in the project
 
-A `$` stage runs when you commit it, in the background and in your home
-folder, and hands on its output (up to 1 MB, two minutes at most; Esc
-stops it). It is the only way a command runs before you press Enter on it.
+A `$` stage runs when you commit it, in the background, and hands on its
+output (up to 1 MB, two minutes at most; Esc stops it). It is the only way
+a command runs before you press Enter on it. Commands run in your home
+folder unless a folder was piped in.
 
 | Pipe | What happens |
 |---|---|
 | `gh parsec` ⇢ `qr` | the repository's URL as a QR code, for your phone |
 | `cb token` ⇢ `dev` | decode a JWT or base64 you copied earlier |
 | `cb` ⇢ `tr >en` ⇢ `qr` | a copied note, translated, on your phone |
-| `$ git diff --staged` ⇢ `ask write a commit message` | a commit message from your staged changes |
+| `parsec` ⇢ `$ git diff --staged` ⇢ `ask write a commit message` | a commit message from the project's staged changes |
 | `dk postgres` ⇢ `$ docker logs --tail 80 {}` ⇢ `ask why does it crash?` | logs straight to Claude |
 | `f invoice.pdf` ⇢ `$ pdftotext {} -` ⇢ `ask total and due date` | read a PDF |
-| `$ git log -1 --format=%s` ⇢ `tr >it` | your last commit, in Italian |
+| `parsec` ⇢ `$ git log -1 --format=%s` ⇢ `tr >it` | the project's last commit, in Italian |
 
 Verbs that answer slowly (`tr`, `ask`) open their answer with Enter as
 usual; Ctrl+Enter on the answer passes it on.
