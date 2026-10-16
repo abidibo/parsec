@@ -769,7 +769,7 @@ fn editor_action(image: &Image) -> Option<Action> {
     Some(Action {
         label: format!("Open in {}", app.name()),
         kind: ActionKind::Callback(Rc::new(move || {
-            let ctx = gdk::Display::default().map(|d| d.app_launch_context());
+            let ctx = crate::core::scope::launch_context();
             app.launch(std::slice::from_ref(&file), ctx.as_ref())?;
             Ok(())
         })),

@@ -6,6 +6,7 @@ pub mod frecency;
 pub mod item;
 pub mod matcher;
 pub mod provider;
+pub mod scope;
 pub mod secrets;
 
 pub use engine::Engine;

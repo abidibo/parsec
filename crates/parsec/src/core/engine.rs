@@ -299,19 +299,19 @@ pub fn run_detached(kind: &ActionKind) -> Result<()> {
 fn run(kind: &ActionKind) -> Result<()> {
     match kind {
         ActionKind::LaunchApp(info) => {
-            let ctx = gtk::gdk::Display::default().map(|d| d.app_launch_context());
-            info.launch(&[], ctx.as_ref())
+            info.launch(&[], super::scope::launch_context().as_ref())
                 .with_context(|| format!("launching {}", info.id().unwrap_or_default()))?;
         }
         ActionKind::Command(argv) => {
             let (program, args) = argv.split_first().context("empty command")?;
-            std::process::Command::new(program)
+            let child = std::process::Command::new(program)
                 .args(args)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
                 .with_context(|| format!("spawning {program}"))?;
+            super::scope::adopt(child.id(), super::scope::app_id_for(program));
         }
         ActionKind::CopyText(text) => copy_text(text)?,
         ActionKind::Paste(text) => {
@@ -347,7 +347,7 @@ fn run(kind: &ActionKind) -> Result<()> {
         ActionKind::Prompt(_) => unreachable!("prompts are handled by the UI"),
         ActionKind::Browse(_) => unreachable!("browsing is handled by the UI"),
         ActionKind::OpenUri(uri) => {
-            gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>)
+            gio::AppInfo::launch_default_for_uri(uri, super::scope::launch_context().as_ref())
                 .with_context(|| format!("opening {uri}"))?;
         }
     }

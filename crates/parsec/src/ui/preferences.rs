@@ -855,7 +855,10 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
             let _ = std::fs::write(&css_path, crate::ui::window::USER_CSS_TEMPLATE);
         }
         let uri = format!("file://{}", css_path.display());
-        let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE);
+        let _ = gtk::gio::AppInfo::launch_default_for_uri(
+            &uri,
+            crate::core::scope::launch_context().as_ref(),
+        );
     });
     look.add(&edit_css);
     look.add(&shown);
@@ -879,8 +882,10 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
     open_dir.connect_clicked(move |_| {
         if let Some(dir) = path.parent() {
             let uri = format!("file://{}", dir.display());
-            let _ =
-                gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE);
+            let _ = gtk::gio::AppInfo::launch_default_for_uri(
+                &uri,
+                crate::core::scope::launch_context().as_ref(),
+            );
         }
     });
     cfg_row.add_suffix(&open_dir);

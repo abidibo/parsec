@@ -151,7 +151,7 @@ impl BrowserProvider {
                         state.source.as_ref().map_or("browser", |s| s.name.as_str())
                     ),
                     kind: ActionKind::Callback(Rc::new(move || {
-                        let ctx = gtk::gdk::Display::default().map(|d| d.app_launch_context());
+                        let ctx = crate::core::scope::launch_context();
                         app.launch_uris(&[&url], ctx.as_ref())?;
                         Ok(())
                     })),

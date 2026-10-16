@@ -166,7 +166,10 @@ pub fn page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Preferen
         let dir = plugins::dir();
         let _ = std::fs::create_dir_all(&dir);
         let uri = format!("file://{}", dir.display());
-        let _ = gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE);
+        let _ = gtk::gio::AppInfo::launch_default_for_uri(
+            &uri,
+            crate::core::scope::launch_context().as_ref(),
+        );
     });
     install.add(&open_dir);
     page.add(&install);
@@ -321,9 +324,10 @@ fn refresh(
 
 fn open_path(path: &std::path::Path) {
     let uri = format!("file://{}", path.display());
-    if let Err(e) =
-        gtk::gio::AppInfo::launch_default_for_uri(&uri, gtk::gio::AppLaunchContext::NONE)
-    {
+    if let Err(e) = gtk::gio::AppInfo::launch_default_for_uri(
+        &uri,
+        crate::core::scope::launch_context().as_ref(),
+    ) {
         tracing::warn!("opening {}: {e}", path.display());
     }
 }
