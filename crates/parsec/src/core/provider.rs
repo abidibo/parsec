@@ -8,6 +8,9 @@ pub struct Query<'a> {
     pub text: &'a str,
     /// The keyword that routed the query here, for providers with several.
     pub verb: Option<&'a str>,
+    /// What the previous stage of a pipe handed on, for providers whose
+    /// `takes_input` said yes. Others get it folded into `text`.
+    pub input: Option<&'a str>,
     pub matcher: &'a Matcher,
     pattern: Pattern,
 }
@@ -17,9 +20,15 @@ impl<'a> Query<'a> {
         Self {
             text,
             verb,
+            input: None,
             matcher,
             pattern: matcher.pattern(text),
         }
+    }
+
+    pub fn with_input(mut self, input: Option<&'a str>) -> Self {
+        self.input = input;
+        self
     }
 
     pub fn is_empty(&self) -> bool {
@@ -72,6 +81,13 @@ pub trait Provider {
     /// Empty means it runs on every query. Owned so they can come from config.
     fn prefixes(&self) -> Vec<String> {
         Vec::new()
+    }
+
+    /// Whether `verb` wants a pipe's input apart from the typed text. When
+    /// it doesn't, the engine replaces `{}` in the text with the input, or
+    /// appends it.
+    fn takes_input(&self, _verb: &str) -> bool {
+        false
     }
 
     /// A provider with keywords that also wants plain queries (plugins

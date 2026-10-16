@@ -778,6 +778,8 @@ fn editor_action(image: &Image) -> Option<Action> {
 
 fn info(id: &str, title: &str, subtitle: &str, icon: &str) -> Item {
     Item {
+        output: None,
+        preview: None,
         id: format!("img:{id}"),
         title: title.into(),
         subtitle: Some(subtitle.into()),
@@ -835,6 +837,8 @@ fn plan_item(images: &Rc<Vec<Image>>, plan: Plan, can: &[Format], score: u32) ->
         _ => vec![save],
     };
     Item {
+        output: None,
+        preview: None,
         id: format!("img:{}", suffix(&plan)),
         title: describe(&plan),
         subtitle: Some(subtitle),

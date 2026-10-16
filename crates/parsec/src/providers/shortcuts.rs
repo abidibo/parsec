@@ -102,6 +102,8 @@ impl ShortcutsProvider {
                 }),
             };
             return Item {
+                output: None,
+                preview: None,
                 body: None,
                 id,
                 title: s.name.clone(),
@@ -115,6 +117,8 @@ impl ShortcutsProvider {
             };
         }
         Item {
+            output: None,
+            preview: None,
             body: None,
             id,
             title: if query.is_empty() {

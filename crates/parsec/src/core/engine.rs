@@ -57,7 +57,10 @@ impl Engine {
     }
 
     /// Run the query through every applicable provider, apply frecency, sort.
-    pub async fn search(&self, raw: &str) -> Vec<Hit> {
+    /// `input` is what a pipe's previous stage handed on. Only a verb
+    /// receives it: separately if its provider takes input, else folded
+    /// into the text by [`compose`]. Plain queries ignore it.
+    pub async fn search(&self, raw: &str, input: Option<&str>) -> Vec<Hit> {
         let raw = raw.trim_start();
         let mut items: Vec<Hit> = Vec::new();
 
@@ -82,7 +85,17 @@ impl Engine {
                     (raw, None)
                 }
             };
-            let q = Query::new(text, verb, &self.matcher);
+            let piped = verb.zip(input);
+            let separate = piped.is_some_and(|(v, _)| p.takes_input(v));
+            let composed = match piped {
+                Some((_, input)) if !separate => compose(text, input),
+                _ => text.to_string(),
+            };
+            let q = Query::new(&composed, verb, &self.matcher).with_input(if separate {
+                input
+            } else {
+                None
+            });
             let found = p.query(&q).await;
             tracing::trace!(provider = p.id(), count = found.len(), "provider results");
             items.extend(found.into_iter().map(|item| hit(p.as_ref(), &q, item)));
@@ -133,6 +146,7 @@ impl Engine {
         let outcome = match &action.kind {
             // Drilling in counts as a pick of the item, not of what's inside.
             ActionKind::Browse(b) => Outcome::Browse(b.clone()),
+            ActionKind::Query(text) => Outcome::Query(text.clone()),
             kind => {
                 run(kind)?;
                 Outcome::Done
@@ -226,6 +240,20 @@ pub enum Outcome {
     Prompt(Prompt),
     /// Keep the launcher open and show this list as a new level.
     Browse(Browse),
+    /// Keep the launcher open with this text in the search box.
+    Query(String),
+}
+
+/// The text a verb that doesn't take input sees: `{}` replaced by the
+/// input, else the input after what was typed (alone if nothing was).
+pub fn compose(text: &str, input: &str) -> String {
+    if text.contains("{}") {
+        text.replace("{}", input)
+    } else if text.trim().is_empty() {
+        input.to_string()
+    } else {
+        format!("{} {input}", text.trim_end())
+    }
 }
 
 /// Clear the clipboard after a delay, unless something else was copied in
@@ -346,6 +374,7 @@ fn run(kind: &ActionKind) -> Result<()> {
         ActionKind::Callback(f) => f()?,
         ActionKind::Prompt(_) => unreachable!("prompts are handled by the UI"),
         ActionKind::Browse(_) => unreachable!("browsing is handled by the UI"),
+        ActionKind::Query(_) => unreachable!("queries are handled by the UI"),
         ActionKind::OpenUri(uri) => {
             gio::AppInfo::launch_default_for_uri(uri, super::scope::launch_context().as_ref())
                 .with_context(|| format!("opening {uri}"))?;
@@ -356,7 +385,15 @@ fn run(kind: &ActionKind) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_verb;
+    use super::{compose, strip_verb};
+
+    #[test]
+    fn compose_fills_braces_or_appends() {
+        assert_eq!(compose("", "ciao"), "ciao");
+        assert_eq!(compose("en ", "ciao"), "en ciao");
+        assert_eq!(compose("logs {} --tail", "web"), "logs web --tail");
+        assert_eq!(compose("{} and {}", "x"), "x and x");
+    }
 
     #[test]
     fn word_prefix_needs_boundary() {

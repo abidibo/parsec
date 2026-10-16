@@ -192,6 +192,8 @@ impl Provider for SshProvider {
                     format!("{}@{}", h.user, h.hostname)
                 };
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("ssh:{}", h.alias),
                     title: h.alias.clone(),
@@ -206,6 +208,8 @@ impl Provider for SshProvider {
         if !q.is_empty() && items.is_empty() && !q.text.contains(char::is_whitespace) {
             let target = q.text.trim().to_string();
             items.push(Item {
+                output: None,
+                preview: None,
                 body: None,
                 id: "ssh:adhoc".into(),
                 title: format!("ssh {target}"),
@@ -403,6 +407,8 @@ impl Provider for DockerProvider {
                 let running = c.state == "running";
                 let actions = container_actions(&cfg, &c);
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("docker:{}", c.names),
                     title: c.names.clone(),
@@ -575,6 +581,8 @@ impl Provider for ServicesProvider {
                     });
                 }
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("service:{scope}:{}", u.unit),
                     title: name,

@@ -152,6 +152,8 @@ impl Provider for GithubRepos {
                 };
                 let clone_url = format!("{}.git", r.url);
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("gh:{}", r.name_with_owner),
                     title: r.name_with_owner.clone(),
@@ -242,6 +244,8 @@ impl Provider for GithubPrs {
                     q.score_any([pr.title.as_str(), pr.repository.name_with_owner.as_str()])?
                 };
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("pr:{}", pr.url),
                     title: pr.title.clone(),

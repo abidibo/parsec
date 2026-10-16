@@ -30,6 +30,8 @@ pub struct Manifest {
     pub config: BTreeMap<String, toml::Value>,
     /// Send the clipboard's text with every query.
     pub clipboard: bool,
+    /// Receive a pipe's input apart from the typed text, as `input`.
+    pub input: bool,
 }
 
 impl Default for Manifest {
@@ -46,6 +48,7 @@ impl Default for Manifest {
             icon: String::new(),
             config: BTreeMap::new(),
             clipboard: false,
+            input: false,
         }
     }
 }

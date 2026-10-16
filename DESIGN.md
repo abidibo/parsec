@@ -192,6 +192,54 @@ Target: GNOME 46+, Wayland.
   default. The copied images are cached until the clipboard's `changed`
   signal or the verb is typed afresh, so typing steps stays instant.
 
+- 2026-10-16: own scopes for launched programs. GIO's launch and our
+  spawns left children in Parsec's own scope (systemd-oomd would kill
+  them with it, their memory was billed to Parsec, cgroups couldn't say
+  which app is which). `core/scope.rs` does what GNOME Shell does: the
+  launch context's `launched` signal, or the spawned child's pid, goes to
+  systemd's `StartTransientUnit` as `app-parsec-<app id>-<pid>.scope` in
+  `app.slice` (freedesktop naming, so portals read the app id). Async on
+  the main loop, failures only logged. A process that exits before the
+  move leaves an empty scope systemd never collects; one still empty after
+  2 s is stopped (empty, so nothing can be killed). D-Bus-activated apps
+  report no pid and keep the unit the bus gave them.
+
+- 2026-10-16: pipes. Ctrl+Enter commits the selected row as a stage: a
+  chip before the verb chip, the box empties, the next verb gets the
+  stage's output. Interactive, not typed: `|` stays the shell's and each
+  stage uses the row you chose. What flows is `Item::output`, or derived
+  from the first copy/paste/open action (file URIs as paths); rows whose
+  Enter is a secret and secrets' text never flow. Only verbs get input:
+  providers whose `takes_input` says yes (shell, plugins with `input =
+  true`) get it as `Query::input`; the rest get `engine::compose` (`{}`
+  replaced, else appended). Plain queries ignore it, so a 1 MB diff never
+  reaches plocate. `$` is the one stage with an effect: its output is
+  `Output::Later`, run at commit (this is the "explicit trigger" from v1)
+  with the input on stdin or in `{}` (inline-quoted up to 32 KiB, else a
+  0600 file in `$XDG_RUNTIME_DIR/parsec`), captured up to 1 MiB in 120 s,
+  killed when the stage is cancelled (Esc, hide) via a drop guard. Its
+  terminal and background runs read the input from that file, the command
+  grouped (`{ …\n}`, fish `begin; …; end`) so a pipeline's first command
+  gets stdin. Backspace undoes a stage back to the search that found it
+  (for a drilled-into row, the search that opened the list).
+  `parsec query --input` exercises stages from a shell. New plugin action
+  `query` (put text in the search box) for the voice plugin.
+
+- 2026-10-16: Quick Look. `Item::preview`: a file, a ready `Sheet`
+  (picture/icon/swatch, text, facts) or a lazy one. The pane is a
+  revealer beside the results; the window is always wide enough for it
+  (a non-resizable window takes its content's width, so a fixed-width box
+  holds the centred panel) and the input region is trimmed to the panel,
+  wide only while the pane shows, so it opens symmetrically and clicks
+  beside the panel reach the desktop. Files are inspected in
+  spawn_blocking: images scaled by gdk-pixbuf to 720 px PNG bytes, else
+  GIO's thumbnail path, else 200 lines of text/plain; textures made on
+  the main thread. Sheets cached per item id until the next show; a
+  render doesn't churn the selection, so the pane stays put while typing.
+  Users: files, project files, projects (README, branch, last commit,
+  changes, lazily), clipboard (text, CSS colour swatch), plugin
+  `preview`, pipe input.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

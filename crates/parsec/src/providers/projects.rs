@@ -4,7 +4,7 @@
 
 use super::SharedConfig;
 use crate::config;
-use crate::core::{Action, ActionKind, Browse, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Browse, Icon, Item, Preview, Provider, Query, Sheet};
 use async_trait::async_trait;
 use gtk::gio;
 #[cfg(test)]
@@ -120,6 +120,8 @@ impl Provider for ProjectsProvider {
                 let score = if q.is_empty() { 1 } else { q.score(&r.name)? };
                 let path = r.path.to_string_lossy();
                 Some(Item {
+                    output: None,
+                    preview: Some(summary(r.path.clone())),
                     body: None,
                     id: format!("project:{}", r.path.display()),
                     title: r.name.clone(),
@@ -160,6 +162,72 @@ impl Provider for ProjectsProvider {
             })
             .collect()
     }
+}
+
+// ---------------------------------------------------------------- quick look
+
+/// Branch, last commit, uncommitted changes and the README, read off the
+/// main thread when the row is first selected.
+fn summary(repo: PathBuf) -> Preview {
+    Preview::Later(std::rc::Rc::new(move || {
+        let repo = repo.clone();
+        Box::pin(async move {
+            let (facts, readme) = gio::spawn_blocking(move || {
+                let mut facts = Vec::new();
+                if let Some(branch) = git(&repo, &["branch", "--show-current"]).pop() {
+                    facts.push(("Branch".to_string(), branch));
+                }
+                if let Some(last) = git(&repo, &["log", "-1", "--format=%s · %cr"]).pop() {
+                    facts.push(("Last commit".to_string(), last));
+                }
+                let changes = git(&repo, &["status", "--porcelain"]).len();
+                facts.push((
+                    "Changes".to_string(),
+                    match changes {
+                        0 => "clean".to_string(),
+                        1 => "1 file".to_string(),
+                        n => format!("{n} files"),
+                    },
+                ));
+                facts.push(("Path".to_string(), config::abbreviate_home(&repo)));
+                (facts, readme(&repo))
+            })
+            .await
+            .ok()?;
+            // Without a README the pane still shows something above the facts.
+            let icon = readme
+                .is_none()
+                .then(|| gtk::prelude::Cast::upcast(gio::ThemedIcon::new("folder-symbolic")));
+            Some(Sheet {
+                text: readme,
+                facts,
+                icon,
+                ..Sheet::default()
+            })
+        })
+    }))
+}
+
+/// The first lines of the repository's README, whatever its extension.
+fn readme(repo: &Path) -> Option<String> {
+    let file = std::fs::read_dir(repo)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .find(|p| {
+            p.file_stem()
+                .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("readme"))
+        })?;
+    let text = std::fs::read_to_string(file).ok()?;
+    let mut lines: Vec<&str> = text.lines().take(121).collect();
+    let cut = lines.len() > 120;
+    lines.truncate(120);
+    let mut out = lines.join("\n");
+    if cut {
+        out.push_str("\n…");
+    }
+    Some(out)
 }
 
 // ---------------------------------------------------------------- drill-downs
@@ -230,6 +298,8 @@ fn branches(cfg: SharedConfig, repo: PathBuf) -> Browse {
                     let target = name.rsplit_once('/').map_or(name.as_str(), |(_, b)| b);
                     let switch = format!("git switch {}", shlex::try_quote(target).ok()?);
                     Some(Item {
+                        output: None,
+                        preview: None,
                         body: None,
                         id: format!("branch:{}:{name}", repo.display()),
                         title: name.clone(),
@@ -284,6 +354,8 @@ fn commits(cfg: SharedConfig, repo: PathBuf) -> Browse {
                     let author = f.next().unwrap_or("").to_string();
                     let when = f.next().unwrap_or("").to_string();
                     Some(Item {
+                        output: None,
+                        preview: None,
                         body: None,
                         id: format!("commit:{}:{hash}", repo.display()),
                         title: subject,
@@ -394,6 +466,8 @@ fn folder_entry(cfg: &SharedConfig, path: PathBuf, is_dir: bool) -> Item {
         Icon::GIcon(gio::content_type_get_icon(&kind))
     };
     Item {
+        output: None,
+        preview: Some(Preview::File(path.clone())),
         body: None,
         id: format!("file:{shown}"),
         title: name,

@@ -102,6 +102,8 @@ impl KeepassProvider {
             }),
         };
         Item {
+            output: None,
+            preview: None,
             body: None,
             id: "keepass:unlock".into(),
             title: format!("Unlock {name}"),
@@ -118,6 +120,8 @@ impl KeepassProvider {
     fn lock_item(&self) -> Item {
         let state = self.state.clone();
         Item {
+            output: None,
+            preview: None,
             body: None,
             id: "keepass:lock".into(),
             title: "Lock database".into(),
@@ -187,6 +191,8 @@ impl KeepassProvider {
             subtitle.push(e.group.clone());
         }
         Item {
+            output: None,
+            preview: None,
             body: None,
             // Hashed: the frecency file must not list account names.
             id: format!(
@@ -291,6 +297,8 @@ impl Provider for KeepassProvider {
         let verb = self.cfg.borrow().verbs.keepass.clone();
         let Some(db) = self.database() else {
             return vec![Item {
+                output: None,
+                preview: None,
                 body: None,
                 id: "keepass:configure".into(),
                 title: "No KeePass database configured".into(),
@@ -310,6 +318,8 @@ impl Provider for KeepassProvider {
         };
         if !db.is_file() {
             return vec![Item {
+                output: None,
+                preview: None,
                 body: None,
                 id: "keepass:missing".into(),
                 title: "KeePass database not found".into(),

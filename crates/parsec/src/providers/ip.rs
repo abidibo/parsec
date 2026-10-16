@@ -229,6 +229,8 @@ fn copy_actions(addr: &str, extra: Option<Action>) -> Vec<Action> {
 
 fn row(id: String, title: &str, subtitle: String, icon: &str, actions: Vec<Action>) -> Item {
     Item {
+        output: None,
+        preview: None,
         id,
         title: title.to_string(),
         subtitle: Some(subtitle),

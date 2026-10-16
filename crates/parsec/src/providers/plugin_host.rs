@@ -10,9 +10,12 @@
 //! plugin may send `progress` lines that replace what the level shows.
 //! Closing the level or hiding the launcher kills the plugin mid-answer:
 //! it restarts on the next query, and that doesn't count as a failure.
+//!
+//! In a pipe, a plugin with `input = true` gets the previous stage's output
+//! as `input` in its queries; any other plugin finds it in `text`.
 
 use super::SharedConfig;
-use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Icon, Item, Preview, Provider, Query, Sheet};
 use crate::plugins::{self, Installed};
 use async_trait::async_trait;
 use futures_util::future::{select, Either};
@@ -166,6 +169,22 @@ struct ReplyItem {
     score: Option<u32>,
     #[serde(default)]
     actions: Vec<ReplyAction>,
+    #[serde(default)]
+    preview: Option<ReplyPreview>,
+}
+
+/// Quick Look content: a file to show, or text with optional facts.
+#[derive(Deserialize)]
+struct ReplyPreview {
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    mono: bool,
+    /// `[["Size", "2 MB"], ...]`
+    #[serde(default)]
+    facts: Vec<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -188,6 +207,9 @@ struct ReplyAction {
     callback: Option<Value>,
     #[serde(default)]
     browse: Option<Value>,
+    /// Put the text in the search box.
+    #[serde(default)]
+    query: Option<String>,
     /// On a `browse`: may take long and stream `progress` (see the top).
     #[serde(default)]
     slow: bool,
@@ -317,6 +339,9 @@ impl PluginHost {
             let mut msg = json!({"type": "query", "id": id, "text": q.text, "keyword": q.verb});
             if wants_clipboard {
                 msg["clipboard"] = json!(clipboard);
+            }
+            if p.info.manifest.input {
+                msg["input"] = json!(q.input);
             }
             (id, msg)
         };
@@ -509,6 +534,8 @@ fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &st
                     }
                 } else if let Some(argv) = a.run {
                     ActionKind::Command(argv)
+                } else if let Some(t) = a.query {
+                    ActionKind::Query(t)
                 } else if let Some(data) = a.callback {
                     let plugin = plugin.clone();
                     let msg =
@@ -583,6 +610,8 @@ fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &st
             });
         }
         Item {
+            output: None,
+            preview: it.preview.and_then(|p| preview(info, p)),
             id: format!("plugin:{}:{}", info.manifest.id, item_id),
             title: it.title,
             subtitle: it.subtitle.filter(|s| !s.is_empty()),
@@ -594,9 +623,28 @@ fn item(plugin: &Rc<RefCell<Plugin>>, info: &Installed, it: ReplyItem, text: &st
     }
 }
 
+fn preview(info: &Installed, p: ReplyPreview) -> Option<Preview> {
+    if let Some(file) = p.file.filter(|f| !f.is_empty()) {
+        // Relative paths are the plugin's own files.
+        return Some(Preview::File(info.dir.join(file)));
+    }
+    let text = p.text.filter(|t| !t.is_empty());
+    if text.is_none() && p.facts.is_empty() {
+        return None;
+    }
+    Some(Preview::Sheet(Sheet {
+        text,
+        mono: p.mono,
+        facts: p.facts,
+        ..Sheet::default()
+    }))
+}
+
 /// An informational row saying why a slow request gave nothing.
 fn problem(info: &Installed, why: &str) -> Item {
     Item {
+        output: None,
+        preview: None,
         id: format!("plugin:{}:error", info.manifest.id),
         title: format!("{} didn't answer", info.manifest.name),
         subtitle: Some(why.to_string()),
@@ -636,6 +684,13 @@ impl Provider for PluginHost {
             .iter()
             .flat_map(|p| p.borrow().info.manifest.keywords.clone())
             .collect()
+    }
+
+    fn takes_input(&self, verb: &str) -> bool {
+        self.plugins.borrow().iter().any(|p| {
+            let m = &p.borrow().info.manifest;
+            m.input && m.keywords.iter().any(|k| k == verb)
+        })
     }
 
     fn accepts_unprefixed(&self) -> bool {

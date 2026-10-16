@@ -87,6 +87,8 @@ fn toggle_item(t: Toggle) -> Option<Entry> {
     };
     Some((
         Item {
+            output: None,
+            preview: None,
             body: None,
             id: format!("sys:{}", t.id),
             title: format!("{}: {state}", t.title),
@@ -284,6 +286,8 @@ fn commands() -> Vec<Entry> {
         .map(|c| {
             (
                 Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: format!("sys:{}", c.id),
                     title: c.title.into(),
@@ -303,6 +307,8 @@ fn commands() -> Vec<Entry> {
     // Screenshot: GNOME's own capture UI, through the Shell.
     items.push((
         Item {
+            output: None,
+            preview: None,
             body: None,
             id: "sys:screenshot".into(),
             title: "Screenshot".into(),
@@ -340,6 +346,8 @@ fn commands() -> Vec<Entry> {
     if which("gnome-control-center").is_some() {
         items.push((
             Item {
+                output: None,
+                preview: None,
                 body: None,
                 id: "sys:settings".into(),
                 title: "GNOME Settings".into(),
@@ -353,6 +361,8 @@ fn commands() -> Vec<Entry> {
                             PANELS
                                 .iter()
                                 .map(|(panel, title)| Item {
+                                    output: None,
+                                    preview: None,
                                     body: None,
                                     id: format!("sys:panel:{panel}"),
                                     title: (*title).into(),

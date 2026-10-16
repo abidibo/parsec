@@ -11,7 +11,10 @@ services, all in one dark panel that follows you between machines: everything
 that depends on the host (editor, terminal, project folders, database path)
 is detected on first run, written to a config file, and editable in a settings
 window. An optional GNOME Shell extension adds open windows to the results
-and pastes straight into the window you came from.
+and pastes straight into the window you came from. Ctrl+Enter pipes a
+result into the next verb (a repository into `qr`, a diff into `ask`), and
+a Quick Look pane previews files, projects and clipboard entries as you
+move through them.
 
 Rust, GTK 4, libadwaita. Wayland first.
 
@@ -184,14 +187,70 @@ Keys:
 | ↑ ↓ | move the selection |
 | Tab / Shift+Tab | cycle the selected row's actions; rows with several show a ⇥ mark |
 | Enter | run the action shown on the right |
+| Ctrl+Enter | pipe the selected row into the next verb (see [Pipes](#pipes)) |
 | Alt+1 … Alt+9 | run the nth result; hold Alt to see the numbers |
-| Esc | close, cancel a password prompt, or step out of a list |
-| ⌫ on an empty box | leave a keyword mode or step out of a list |
+| Esc | close, cancel a password prompt or a running pipe stage, or step out of a list |
+| ⌫ on an empty box | leave a keyword mode, step out of a list, or undo the last pipe stage |
 | Ctrl+, | settings |
 
 Opening the launcher with nothing typed shows the things you have picked
 before. Word verbs need a space (`gh foo`; `ghost` searches apps). Symbol
 verbs don't (`$ls`).
+
+### Pipes
+
+Ctrl+Enter on a row hands what it holds to the next verb you type. The
+row becomes a chip in the search bar, the box empties, and the next
+verb gets it as input. Chain as many stages as you like; Backspace on
+the empty box takes the last one back, Enter on the final stage runs it.
+
+What a row hands on is what it would copy or open: a file's or project's
+path, a clipboard entry, a URL, a commit hash, a container id, a plugin's
+answer. Rows whose Enter is a password hand on nothing, and secrets never
+flow. A verb receives the input like this:
+
+- `{}` in what you type is replaced by it: `$ docker logs {} --tail 50`
+- otherwise it is added after what you typed: `qr` alone encodes it,
+  `tr >en` translates it
+- `$` takes it on stdin when there's no `{}` (`$ jq .data`, `$ wc -l`),
+  and plugins that ask for it (`input = true`) get it apart from the text
+
+A `$` stage runs when you commit it, in the background and in your home
+folder, and hands on its output (up to 1 MB, two minutes at most; Esc
+stops it). It is the only way a command runs before you press Enter on it.
+
+| Pipe | What happens |
+|---|---|
+| `gh parsec` ⇢ `qr` | the repository's URL as a QR code, for your phone |
+| `cb token` ⇢ `dev` | decode a JWT or base64 you copied earlier |
+| `cb` ⇢ `tr >en` ⇢ `qr` | a copied note, translated, on your phone |
+| `$ git diff --staged` ⇢ `ask write a commit message` | a commit message from your staged changes |
+| `dk postgres` ⇢ `$ docker logs --tail 80 {}` ⇢ `ask why does it crash?` | logs straight to Claude |
+| `f invoice.pdf` ⇢ `$ pdftotext {} -` ⇢ `ask total and due date` | read a PDF |
+| `$ git log -1 --format=%s` ⇢ `tr >it` | your last commit, in Italian |
+
+Verbs that answer slowly (`tr`, `ask`) open their answer with Enter as
+usual; Ctrl+Enter on the answer passes it on.
+
+`parsec query --input <text> <verb ...>` runs a stage from a shell, with
+`--input -` reading stdin; each row shows what it would hand on.
+
+### Quick Look
+
+When the selected row has something to show, a pane slides in beside the
+results and follows the selection:
+
+- files and folders (`f`, a project's Files): images, the first lines of
+  text and code, GNOME's thumbnail for PDFs, videos and documents, a
+  folder's contents; type, size, dimensions and age
+- clipboard entries: the whole text, a swatch for CSS colours (`#8b7cff`,
+  `rgb(…)`), length and when it was copied
+- projects: the README, branch, last commit and uncommitted changes
+- plugin rows that carry a `preview` (see [Writing one](#writing-one))
+- the input of a pipe, in full
+
+Files are read off the main thread, scaled down, and cached until the
+launcher opens again.
 
 ### Shell runner and history
 
@@ -669,6 +728,7 @@ keywords = ["="]            # trigger words; empty = sees every query
 exec = "main.py"            # relative to the plugin folder, made executable on install
 icon = "accessories-calculator-symbolic"   # theme name or image file in the folder
 clipboard = false           # true: each query also carries the clipboard's text
+input = false               # true: a pipe's input arrives apart from the text
 
 [config]                    # optional defaults, handed to the plugin at start
 precision = 10              # the user can override them, see Settings above
@@ -687,23 +747,35 @@ exactly one line on stdout:
 `text` is what the user typed after the keyword. A plugin with
 `clipboard = true` also gets `"clipboard"`: the clipboard's text, or `null`
 when it is empty, not text, or a password Parsec just copied. To use it in a
-`browse` or `callback`, put it in that action's data. An item is:
+`browse` or `callback`, put it in that action's data.
+
+In a [pipe](#pipes), `text` already holds the previous stage's output
+(in place of `{}`, or after what was typed), so a plugin works in pipes
+without knowing about them. One with `input = true` gets `text` as typed
+and the output as `"input"` instead (`null` outside a pipe); put it in an
+action's data to use it later, as with the clipboard. An item is:
 
 ```json
 {"title": "14", "subtitle": "2*(3+4) =", "icon": "optional", "id": "optional",
  "score": 500, "text": "optional, several lines",
+ "preview": {"text": "optional", "mono": false, "facts": [["Size", "2 MB"]]},
  "actions": [{"label": "Copy", "copy": "14"}]}
 ```
 
 `text` is shown in full under the title, wrapped, for answers and drafts
-that don't fit a one-line subtitle.
+that don't fit a one-line subtitle. `preview` fills the [Quick
+Look](#quick-look) pane while the row is selected: text (monospace with
+`mono`) and label/value facts, or `{"file": "path"}` to show a file the
+way Parsec shows its own (relative paths are inside the plugin folder).
+Ctrl+Enter pipes an item's first `copy`, `paste` or `open` value.
 
 Actions, one key each: `open` a URL, `copy` text, `copy_secret` text (kept
 out of the clipboard history and cleared after 15 s), `run` an argv array,
 `browse` with any JSON (opens a list, see below),
 `paste` text (typed into the previous window with the Shell extension,
 copied without it), `paste_secret` text (the same with the `copy_secret`
-protections), or `callback` with any JSON, which comes back to the
+protections), `query` text (put in the search box as if typed; the
+launcher stays open), or `callback` with any JSON, which comes back to the
 plugin in an `activate` message when the user picks it. The first action runs on Enter, the others
 are reachable with Tab. Items with no actions are informational.
 

@@ -11,6 +11,8 @@ pub mod secrets;
 
 pub use engine::Engine;
 pub use engine::Outcome;
-pub use item::{Action, ActionKind, Browse, Hit, Icon, Item, Progress, Prompt};
+pub use item::{
+    Action, ActionKind, Browse, Hit, Icon, Item, Output, Preview, Progress, Prompt, Sheet,
+};
 pub use matcher::Matcher;
 pub use provider::{Provider, Query};

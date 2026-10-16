@@ -6,7 +6,7 @@
 
 use super::SharedConfig;
 use crate::config;
-use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Icon, Item, Preview, Provider, Query};
 use async_trait::async_trait;
 use gtk::gio;
 use gtk::prelude::*;
@@ -208,6 +208,8 @@ impl FilesProvider {
             kind: ActionKind::CopyText(p.clone()),
         });
         Item {
+            output: None,
+            preview: Some(Preview::File(path.to_path_buf())),
             body: None,
             id: format!("file:{p}"),
             title: name,

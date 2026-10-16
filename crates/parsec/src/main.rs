@@ -31,6 +31,7 @@ fn main() -> glib::ExitCode {
             "parsec - a personal GNOME launcher\n\n\
              usage:\n  parsec               start the daemon, or toggle the window if it runs\n  \
              parsec query <text>  run a search once and print results (debugging)\n  \
+             parsec query --input <text|-> <verb ...>  the same, piped (- reads stdin)\n  \
              parsec config        print the effective configuration and its path\n  \
              parsec settings      open the settings window\n  \
              parsec plugin list | install <zip|dir|git-url> | remove <id>\n  \
@@ -53,8 +54,17 @@ fn main() -> glib::ExitCode {
         return extension_command(&args[2..]);
     }
     if args.get(1).map(String::as_str) == Some("query") {
-        let text = args[2..].join(" ");
-        return query_once(&text);
+        let mut rest = &args[2..];
+        let mut input = None;
+        if rest.first().map(String::as_str) == Some("--input") && rest.len() > 1 {
+            input = Some(if rest[1] == "-" {
+                std::io::read_to_string(std::io::stdin()).unwrap_or_default()
+            } else {
+                rest[1].clone()
+            });
+            rest = &rest[2..];
+        }
+        return query_once(&rest.join(" "), input.as_deref());
     }
     let background = args.iter().any(|a| a == "--background");
     let settings = args.get(1).map(String::as_str) == Some("settings");
@@ -176,7 +186,8 @@ fn extension_command(args: &[String]) -> glib::ExitCode {
 }
 
 /// Run one search through the engine with no window, for debugging providers.
-fn query_once(text: &str) -> glib::ExitCode {
+/// Each row also shows what piping it would hand on.
+fn query_once(text: &str, input: Option<&str>) -> glib::ExitCode {
     let cfg = std::rc::Rc::new(std::cell::RefCell::new(config::Config::load()));
     let bridge = gnome_shell::bridge();
     bridge.set_enabled(cfg.borrow().shell.extension);
@@ -184,13 +195,21 @@ fn query_once(text: &str) -> glib::ExitCode {
     let started = std::time::Instant::now();
     let items = glib::MainContext::default().block_on(async {
         bridge.connect().await;
-        engine.search(text).await
+        engine.search(text, input).await
     });
     for (i, hit) in items.iter().enumerate() {
         let item = &hit.item;
         let actions: Vec<&str> = item.actions.iter().map(|a| a.label.as_str()).collect();
+        let output = match item.pipe_output() {
+            Some(core::Output::Text(t)) => {
+                let line = t.lines().next().unwrap_or("");
+                format!("  ⇢ {}", line.chars().take(50).collect::<String>())
+            }
+            Some(core::Output::Later { waiting, .. }) => format!("  ⇢ ({waiting})"),
+            None => String::new(),
+        };
         println!(
-            "{:>2}. {:<40} {:<40} [{}]",
+            "{:>2}. {:<40} {:<40} [{}]{output}",
             i + 1,
             item.title,
             item.subtitle.as_deref().unwrap_or(""),

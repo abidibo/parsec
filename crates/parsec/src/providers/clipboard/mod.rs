@@ -10,7 +10,7 @@ mod watcher;
 pub use watcher::current_text;
 
 use super::SharedConfig;
-use crate::core::{Action, ActionKind, Icon, Item, Provider, Query};
+use crate::core::{Action, ActionKind, Icon, Item, Preview, Provider, Query, Sheet};
 use async_trait::async_trait;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -136,6 +136,8 @@ impl Provider for ClipboardProvider {
                 };
                 let score = if e.pinned { base + base / 4 } else { base };
                 Some(Item {
+                    output: None,
+                    preview: Some(preview(e)),
                     body: None,
                     id: e.id(),
                     title: first_line(&e.text, 90),
@@ -165,6 +167,29 @@ fn first_line(text: &str, max_chars: usize) -> String {
     } else {
         line.to_string()
     }
+}
+
+/// The whole entry, with a swatch when it is a colour.
+fn preview(e: &Entry) -> Preview {
+    let swatch = crate::ui::preview::colour(&e.text);
+    let mut facts = vec![
+        ("Characters".to_string(), e.text.chars().count().to_string()),
+        ("Lines".to_string(), e.text.lines().count().to_string()),
+        (
+            "Copied".to_string(),
+            ago(store::now().saturating_sub(e.last_seen)),
+        ),
+    ];
+    if e.pinned {
+        facts.push(("Pinned".to_string(), "yes".to_string()));
+    }
+    Preview::Sheet(Sheet {
+        swatch,
+        text: Some(e.text.clone()),
+        mono: e.text.lines().count() > 1,
+        facts,
+        ..Sheet::default()
+    })
 }
 
 fn describe(e: &Entry) -> String {

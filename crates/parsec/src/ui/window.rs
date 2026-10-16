@@ -2,11 +2,18 @@
 //! highlighted matches, icon tiles and section headers, a context footer.
 //! Created once at startup and toggled, never destroyed.
 //!
+//! Ctrl+Enter pipes the selected row: what it hands on becomes a stage
+//! chip and the input of the next verb typed. Beside the results, the
+//! Quick Look pane slides in whenever the selected row has a preview. The
+//! window is always wide enough for it, with the panel centred and the
+//! input region trimmed to the panel, so the pane opens symmetrically.
+//!
 //! Look: a near-opaque dark panel floating on a shadow, independent of the
 //! GNOME theme. Colours are `@define-color` variables so
 //! `~/.config/parsec/style.css` can override them without touching rules.
 
-use crate::core::{ActionKind, Browse, Engine, Hit, Icon, Item, Outcome, Prompt};
+use super::preview::{self, PreviewPane};
+use crate::core::{ActionKind, Browse, Engine, Hit, Icon, Item, Outcome, Output, Prompt, Sheet};
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::{Cell, RefCell};
@@ -21,6 +28,11 @@ const PICTURE_SIZE: i32 = 240;
 /// Transparent margin around the panel where the shadow is drawn.
 const SHADOW_MARGIN: i32 = 28;
 const PLACEHOLDER: &str = "Search apps, projects, clipboard…";
+/// The window: the panel with the Quick Look pane open, and its shadow.
+const FULL_WIDTH: i32 = WIDTH + preview::WIDTH + 2 * SHADOW_MARGIN;
+const PIPE_PLACEHOLDER: &str = "Pipe into… qr, tr, ask, $ …";
+/// Longest stage chip, in characters.
+const STAGE_LABEL_MAX: usize = 24;
 const FALLBACK_ACCENT: &str = "#8b7cff";
 
 /// Written when the settings window's "Edit stylesheet" finds no file.
@@ -43,7 +55,9 @@ pub const USER_CSS_TEMPLATE: &str = r#"/* Parsec user stylesheet. Reloaded live 
      window.parsec  .parsec-panel  .parsec-search  .parsec-entry  .parsec-chip
      .parsec-results row (:selected)  .parsec-tile  .parsec-title
      .parsec-subtitle  .parsec-action  .parsec-section  .parsec-empty
-     .parsec-picture  .parsec-body
+     .parsec-picture  .parsec-body  .parsec-stage
+     .parsec-preview  .parsec-preview-text (.mono)  .parsec-preview-key
+     .parsec-preview-value
      .parsec-welcome  .parsec-footer  .parsec-key
 */
 
@@ -112,6 +126,19 @@ window.parsec {
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.3px;
+}
+.parsec-stage {
+    background-color: @parsec_chip_bg;
+    border: 1px solid @parsec_border;
+    color: @parsec_fg;
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-size: 13px;
+}
+.parsec-pipe {
+    color: @parsec_accent;
+    font-weight: 600;
+    margin: 0 8px 0 6px;
 }
 .parsec-entry {
     font-size: 21px;
@@ -241,6 +268,35 @@ window.parsec {
     background-color: alpha(@parsec_accent, 0.35);
 }
 
+/* quick look */
+.parsec-preview {
+    border-left: 1px solid @parsec_border;
+    padding: 14px 16px 12px 16px;
+}
+.parsec-preview-picture {
+    border-radius: 8px;
+}
+.parsec-preview-icon {
+    color: @parsec_dim;
+}
+.parsec-preview-text {
+    font-size: 12px;
+    color: @parsec_fg;
+}
+.parsec-preview-text.mono {
+    font-family: monospace;
+    font-size: 11px;
+}
+.parsec-preview-key {
+    font-size: 11px;
+    color: @parsec_dim;
+}
+.parsec-preview-value {
+    font-size: 11px;
+    color: @parsec_fg;
+}
+.parsec-tile.tile-pipe { background-color: alpha(@parsec_accent, 0.16); color: @parsec_accent; }
+
 /* empty states */
 .parsec-empty {
     font-size: 13px;
@@ -326,6 +382,19 @@ const HINTS_BROWSE: &[(&str, &str)] = &[("⌫", "back"), ("⇥", "actions"), ("�
 /// With results on screen the footer stays quiet: only the two keys that
 /// are not obvious. The full tables show on empty states.
 const HINTS_RESULTS: &[(&str, &str)] = &[("⇥", "actions"), ("↵", "run")];
+const HINTS_RESULTS_PIPE: &[(&str, &str)] = &[("⇥", "actions"), ("↵", "run"), ("ctrl+↵", "pipe")];
+/// Right after a stage was committed: the input row alone.
+const HINTS_PIPE: &[(&str, &str)] = &[("⌫", "undo pipe"), ("esc", "close")];
+const HINTS_PENDING: &[(&str, &str)] = &[("esc", "cancel")];
+
+/// A committed pipe stage: what it hands on, and the search that found
+/// it, put back when the stage is taken back.
+struct Stage {
+    label: String,
+    output: Rc<str>,
+    verb_before: Option<(String, String)>,
+    entry_before: String,
+}
 
 /// One drilled-into list. The stack of these is the breadcrumb.
 struct Level {
@@ -361,6 +430,9 @@ pub struct LauncherWindow {
     welcome: gtk::Box,
     hints: gtk::Box,
     gear: gtk::Button,
+    /// Committed stages, shown before the chip.
+    stage_chips: gtk::Box,
+    preview: Rc<PreviewPane>,
     engine: Rc<Engine>,
     results: Rc<RefCell<Vec<Hit>>>,
     /// Selected action per result row, cycled with Tab.
@@ -378,6 +450,13 @@ pub struct LauncherWindow {
     levels: Rc<RefCell<Vec<Level>>>,
     /// Set while the code changes the entry text itself.
     suppress: Rc<Cell<bool>>,
+    /// Set while `render` rebuilds the list, whose selection churns.
+    rendering: Rc<Cell<bool>>,
+    stages: Rc<RefCell<Vec<Stage>>>,
+    /// A stage being produced (a `$` command running), until it hands on.
+    pending: Rc<RefCell<Option<glib::JoinHandle<()>>>>,
+    /// Shown in place of results: a pending stage, or why one failed.
+    notice: Rc<RefCell<Option<String>>>,
     entrance: adw::TimedAnimation,
 }
 
@@ -401,11 +480,17 @@ impl LauncherWindow {
             .hexpand(true)
             .css_classes(["parsec-entry"])
             .build();
+        let stage_chips = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .build();
         let search = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .css_classes(["parsec-search"])
             .build();
         search.append(&search_icon);
+        search.append(&stage_chips);
         search.append(&chip);
         search.append(&entry);
 
@@ -475,21 +560,42 @@ impl LauncherWindow {
             .margin_start(SHADOW_MARGIN)
             .margin_end(SHADOW_MARGIN)
             .build();
+        // Results on the left, Quick Look sliding in on the right.
+        let results_column = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .width_request(WIDTH)
+            .build();
+        results_column.append(&scroller);
+        results_column.append(&empty);
+        results_column.append(&welcome);
+        let preview = PreviewPane::new();
+        let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        body.append(&results_column);
+        body.append(preview.widget());
+
+        panel.set_halign(gtk::Align::Center);
+        panel.set_valign(gtk::Align::Start);
         panel.append(&search);
         panel.append(&separator());
-        panel.append(&scroller);
-        panel.append(&empty);
-        panel.append(&welcome);
+        panel.append(&body);
         panel.append(&separator());
         panel.append(&footer);
+
+        // A non-resizable window takes its content's width, so the room for
+        // the pane is reserved here, around the centred panel.
+        let room = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .width_request(FULL_WIDTH)
+            .build();
+        room.append(&panel);
 
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("Parsec")
-            .default_width(WIDTH + 2 * SHADOW_MARGIN)
+            .default_width(FULL_WIDTH)
             .resizable(false)
             .decorated(false)
-            .content(&panel)
+            .content(&room)
             .css_classes(["parsec"])
             .build();
 
@@ -516,6 +622,8 @@ impl LauncherWindow {
             welcome,
             hints,
             gear,
+            stage_chips,
+            preview,
             engine,
             results: Rc::new(RefCell::new(Vec::new())),
             action_idx: Rc::new(RefCell::new(Vec::new())),
@@ -526,6 +634,10 @@ impl LauncherWindow {
             verb: Rc::new(RefCell::new(None)),
             levels: Rc::new(RefCell::new(Vec::new())),
             suppress: Rc::new(Cell::new(false)),
+            rendering: Rc::new(Cell::new(false)),
+            stages: Rc::new(RefCell::new(Vec::new())),
+            pending: Rc::new(RefCell::new(None)),
+            notice: Rc::new(RefCell::new(None)),
             entrance,
         };
         this.build_welcome();
@@ -566,6 +678,26 @@ impl LauncherWindow {
                 this.activate_selected();
             }
         ));
+
+        // Quick Look and the pipe hint follow the selection.
+        self.list.connect_row_selected(glib::clone!(
+            #[strong(rename_to = this)]
+            self,
+            move |_, _| this.selection_changed()
+        ));
+        // The pane is gone once it finished sliding away: give the space
+        // back to the desktop.
+        self.preview
+            .widget()
+            .connect_child_revealed_notify(glib::clone!(
+                #[strong(rename_to = this)]
+                self,
+                move |r| {
+                    if !r.is_child_revealed() {
+                        this.set_input_band(false);
+                    }
+                }
+            ));
 
         // Section headers when results come from several providers.
         self.list.set_header_func(glib::clone!(
@@ -613,8 +745,18 @@ impl LauncherWindow {
                         }
                         glib::Propagation::Stop
                     }
+                    Key::Return | Key::KP_Enter
+                        if state.contains(ModifierType::CONTROL_MASK)
+                            && this.prompt.borrow().is_none() =>
+                    {
+                        this.commit_selected();
+                        glib::Propagation::Stop
+                    }
                     Key::Escape => {
-                        if this.prompt.borrow().is_some() {
+                        if this.pending.borrow().is_some() {
+                            this.cancel_pending();
+                            this.search(&this.composed());
+                        } else if this.prompt.borrow().is_some() {
                             this.leave_prompt(true);
                         } else if this.in_browse() {
                             this.leave_browse();
@@ -636,6 +778,14 @@ impl LauncherWindow {
                         this.set_chip(None);
                         this.set_entry_text(&verb);
                         this.search(&verb);
+                        glib::Propagation::Stop
+                    }
+                    Key::BackSpace
+                        if !this.stages.borrow().is_empty()
+                            && this.entry.text().is_empty()
+                            && this.pending.borrow().is_none() =>
+                    {
+                        this.uncommit();
                         glib::Propagation::Stop
                     }
                     Key::Alt_L | Key::Alt_R => {
@@ -726,11 +876,16 @@ impl LauncherWindow {
     pub fn show(&self) {
         self.was_active.set(false);
         self.levels.borrow_mut().clear();
+        self.cancel_pending();
+        self.stages.borrow_mut().clear();
+        self.refresh_stage_chips();
+        self.preview.reset();
         self.set_chip(None);
         self.set_entry_text("");
         self.search("");
         self.panel.set_opacity(0.0);
         self.window.present();
+        self.set_input_band(false);
         self.entry.grab_focus();
         self.entrance.play();
     }
@@ -740,6 +895,7 @@ impl LauncherWindow {
             self.leave_prompt(false);
         }
         self.cancel_loads();
+        self.cancel_pending();
         self.list.remove_css_class("show-numbers");
         self.window.set_visible(false);
     }
@@ -773,12 +929,18 @@ impl LauncherWindow {
             None => {
                 self.chip.set_visible(false);
                 *self.verb.borrow_mut() = None;
-                self.entry.set_placeholder_text(Some(PLACEHOLDER));
+                let piping = !self.stages.borrow().is_empty();
+                self.entry.set_placeholder_text(Some(if piping {
+                    PIPE_PLACEHOLDER
+                } else {
+                    PLACEHOLDER
+                }));
             }
         }
     }
 
     fn on_typed(&self) {
+        self.notice.borrow_mut().take();
         if self.in_browse() {
             self.render_level();
             return;
@@ -802,10 +964,19 @@ impl LauncherWindow {
     fn search(&self, text: &str) {
         let gen = self.generation.get() + 1;
         self.generation.set(gen);
+        let input = self.input();
+        if let Some(input) = &input {
+            if text.trim().is_empty() && self.verb.borrow().is_none() {
+                // Nothing typed after a stage yet: show what flows in.
+                let hit = self.input_hit(input);
+                self.render(vec![hit], true);
+                return;
+            }
+        }
         let this = self.clone();
         let text = text.to_owned();
         glib::spawn_future_local(async move {
-            let hits = this.engine.search(&text).await;
+            let hits = this.engine.search(&text, input.as_deref()).await;
             if this.generation.get() != gen {
                 return;
             }
@@ -814,6 +985,9 @@ impl LauncherWindow {
     }
 
     fn render(&self, hits: Vec<Hit>, query_empty: bool) {
+        // Emptying the list deselects; the pane would slide out and back
+        // in on every keystroke. The new selection is handled once below.
+        self.rendering.set(true);
         while let Some(child) = self.list.first_child() {
             self.list.remove(&child);
         }
@@ -826,13 +1000,16 @@ impl LauncherWindow {
         if let Some(first) = self.list.row_at_index(0) {
             self.list.select_row(Some(&first));
         }
+        self.rendering.set(false);
         let none = hits.is_empty();
         let in_prompt = self.prompt.borrow().is_some();
-        let waiting = self.levels.borrow().last().filter(|l| l.loading).map(|l| {
-            l.browse
-                .waiting
-                .clone()
-                .unwrap_or_else(|| "Loading…".into())
+        let waiting = self.notice.borrow().clone().or_else(|| {
+            self.levels.borrow().last().filter(|l| l.loading).map(|l| {
+                l.browse
+                    .waiting
+                    .clone()
+                    .unwrap_or_else(|| "Loading…".into())
+            })
         });
         self.scroller.set_visible(!none);
         self.empty
@@ -840,10 +1017,19 @@ impl LauncherWindow {
         self.empty
             .set_visible(none && (waiting.is_some() || !query_empty) && !in_prompt);
         self.welcome.set_visible(
-            none && query_empty && !in_prompt && self.verb.borrow().is_none() && !self.in_browse(),
+            none && query_empty
+                && !in_prompt
+                && waiting.is_none()
+                && self.verb.borrow().is_none()
+                && !self.in_browse(),
         );
-        self.set_hints(if !none {
-            HINTS_RESULTS
+        let input_only = hits.len() == 1 && hits[0].provider == "pipe";
+        self.set_hints(if self.pending.borrow().is_some() {
+            HINTS_PENDING
+        } else if input_only {
+            HINTS_PIPE
+        } else if !none {
+            self.results_hints()
         } else if in_prompt {
             HINTS_PROMPT
         } else if self.in_browse() {
@@ -854,6 +1040,61 @@ impl LauncherWindow {
             HINTS_SEARCH
         });
         *self.action_idx.borrow_mut() = vec![0; hits.len()];
+        self.selection_changed();
+    }
+
+    /// The selected row changed: preview it, and offer Ctrl+Enter only
+    /// when it has something to hand on.
+    fn selection_changed(&self) {
+        if self.rendering.get() {
+            return;
+        }
+        let item = self
+            .list
+            .selected_row()
+            .and_then(|r| self.results.borrow().get(r.index() as usize).cloned())
+            .map(|h| h.item)
+            .filter(|_| self.prompt.borrow().is_none());
+        if item.as_ref().is_some_and(|i| i.preview.is_some()) {
+            self.set_input_band(true);
+        }
+        self.preview.show_for(item.as_ref());
+        let results = self.results.borrow();
+        let input_only = results.len() == 1 && results[0].provider == "pipe";
+        drop(results);
+        if item.is_some() && !input_only && self.pending.borrow().is_none() {
+            self.set_hints(self.results_hints());
+        }
+    }
+
+    fn results_hints(&self) -> &'static [(&'static str, &'static str)] {
+        let pipeable = self
+            .list
+            .selected_row()
+            .and_then(|r| {
+                let results = self.results.borrow();
+                let item = &results.get(r.index() as usize)?.item;
+                Some(item.pipe_output().is_some())
+            })
+            .unwrap_or(false);
+        if pipeable {
+            HINTS_RESULTS_PIPE
+        } else {
+            HINTS_RESULTS
+        }
+    }
+
+    /// Let clicks through outside the panel. The window keeps room for the
+    /// Quick Look pane either way; `wide` while the pane is (about to be)
+    /// shown.
+    fn set_input_band(&self, wide: bool) {
+        let Some(surface) = self.window.surface() else {
+            return;
+        };
+        let panel = WIDTH + if wide { preview::WIDTH } else { 0 } + 2 * SHADOW_MARGIN;
+        let x = (FULL_WIDTH - panel) / 2;
+        let band = gtk::cairo::RectangleInt::new(x, 0, panel, i16::MAX as i32);
+        surface.set_input_region(Some(&gtk::cairo::Region::create_rectangle(&band)));
     }
 
     fn move_selection(&self, delta: i32) {
@@ -914,7 +1155,7 @@ impl LauncherWindow {
         let action = self.action_idx.borrow().get(idx).copied().unwrap_or(0);
         let stays_open = matches!(
             item.actions.get(action).map(|a| &a.kind),
-            Some(ActionKind::Prompt(_) | ActionKind::Browse(_))
+            Some(ActionKind::Prompt(_) | ActionKind::Browse(_) | ActionKind::Query(_))
         );
         if !stays_open {
             self.hide();
@@ -924,7 +1165,186 @@ impl LauncherWindow {
             Ok(Outcome::Done) => {}
             Ok(Outcome::Prompt(p)) => self.enter_prompt(p),
             Ok(Outcome::Browse(b)) => self.enter_browse(b, provider),
+            Ok(Outcome::Query(text)) => self.set_query(&text),
             Err(e) => tracing::error!("activation failed: {e:#}"),
+        }
+    }
+
+    /// Put `text` in the search box as if typed, from wherever we are.
+    fn set_query(&self, text: &str) {
+        self.levels.borrow_mut().clear();
+        self.set_chip(None);
+        self.set_entry_text(text);
+        self.on_typed();
+        self.entry.grab_focus_without_selecting();
+    }
+
+    // ------------------------------------------------------------ pipes
+
+    /// What the last committed stage hands on.
+    fn input(&self) -> Option<Rc<str>> {
+        self.stages.borrow().last().map(|s| s.output.clone())
+    }
+
+    /// The search that is on screen, to restore when a stage is undone:
+    /// for a drilled-into list, the search that opened it.
+    fn search_state(&self) -> (Option<(String, String)>, String) {
+        if let Some(root) = self.levels.borrow().first() {
+            return (root.chip_before.clone(), root.entry_before.clone());
+        }
+        let verb = self
+            .verb
+            .borrow()
+            .clone()
+            .map(|v| (v, self.chip.label().to_string()));
+        (verb, self.entry.text().to_string())
+    }
+
+    /// Ctrl+Enter: the selected row becomes a stage, if it hands anything on.
+    fn commit_selected(&self) {
+        if self.pending.borrow().is_some() {
+            return;
+        }
+        let Some(row) = self.list.selected_row() else {
+            return;
+        };
+        let item = match self.results.borrow().get(row.index() as usize) {
+            Some(h) if h.provider != "pipe" => h.item.clone(),
+            _ => return,
+        };
+        let Some(output) = item.pipe_output() else {
+            return;
+        };
+        let label = shorten(item.title.lines().next().unwrap_or(""), STAGE_LABEL_MAX);
+        let (verb_before, entry_before) = self.search_state();
+        let stage = move |output: String| Stage {
+            label: label.clone(),
+            output: output.into(),
+            verb_before: verb_before.clone(),
+            entry_before: entry_before.clone(),
+        };
+        match output {
+            Output::Text(text) => self.push_stage(stage(text)),
+            Output::Later { waiting, produce } => {
+                // Typing would race the result; the entry waits with us.
+                self.entry.set_editable(false);
+                *self.notice.borrow_mut() = Some(waiting);
+                self.generation.set(self.generation.get() + 1);
+                let this = self.clone();
+                let task = glib::spawn_future_local(async move {
+                    let result = produce().await;
+                    this.pending.borrow_mut().take();
+                    this.entry.set_editable(true);
+                    match result {
+                        Ok(text) => {
+                            this.notice.borrow_mut().take();
+                            this.push_stage(stage(text));
+                        }
+                        Err(why) => {
+                            // Stay put so the command can be fixed.
+                            *this.notice.borrow_mut() = Some(why);
+                            this.render(Vec::new(), false);
+                        }
+                    }
+                });
+                *self.pending.borrow_mut() = Some(task);
+                self.render(Vec::new(), true);
+            }
+        }
+    }
+
+    fn push_stage(&self, stage: Stage) {
+        self.levels.borrow_mut().clear();
+        self.stages.borrow_mut().push(stage);
+        self.refresh_stage_chips();
+        self.set_chip(None);
+        self.set_entry_text("");
+        self.search("");
+    }
+
+    /// Backspace on an empty box after a stage: back to the search it
+    /// came from.
+    fn uncommit(&self) {
+        let Some(stage) = self.stages.borrow_mut().pop() else {
+            return;
+        };
+        self.refresh_stage_chips();
+        self.set_chip(stage.verb_before);
+        self.set_entry_text(&stage.entry_before);
+        self.search(&self.composed());
+    }
+
+    /// Stop a stage still being produced; its command is killed.
+    fn cancel_pending(&self) {
+        if let Some(task) = self.pending.borrow_mut().take() {
+            task.abort();
+        }
+        self.notice.borrow_mut().take();
+        self.entry.set_editable(true);
+    }
+
+    fn refresh_stage_chips(&self) {
+        while let Some(c) = self.stage_chips.first_child() {
+            self.stage_chips.remove(&c);
+        }
+        let stages = self.stages.borrow();
+        for stage in stages.iter() {
+            self.stage_chips.append(
+                &gtk::Label::builder()
+                    .label(&stage.label)
+                    .css_classes(["parsec-stage"])
+                    .tooltip_text(shorten(&stage.output, 400))
+                    .build(),
+            );
+            self.stage_chips.append(
+                &gtk::Label::builder()
+                    .label("|")
+                    .css_classes(["parsec-pipe"])
+                    .build(),
+            );
+        }
+        self.stage_chips.set_visible(!stages.is_empty());
+    }
+
+    /// The row shown before the next verb is typed: what flows in.
+    fn input_hit(&self, input: &str) -> Hit {
+        let lines = input.lines().count();
+        let chars = input.chars().count();
+        let first: Vec<&str> = input.lines().take(6).collect();
+        let mut body = shorten(&first.join("\n"), 600);
+        if lines > first.len() {
+            body.push_str("\n…");
+        }
+        let from = self
+            .stages
+            .borrow()
+            .last()
+            .map(|s| s.label.clone())
+            .unwrap_or_default();
+        Hit {
+            item: Item {
+                // By content: the pane caches previews by id, and every
+                // stage's input row would otherwise share one.
+                id: format!("pipe:input:{:016x}", crate::core::secrets::hash(input)),
+                title: format!("Input from {from}"),
+                subtitle: Some(format!(
+                    "{lines} line{} · {chars} character{} · type a verb to pipe into",
+                    if lines == 1 { "" } else { "s" },
+                    if chars == 1 { "" } else { "s" }
+                )),
+                body: Some(body),
+                icon: Icon::Named("mail-forward-symbolic".into()),
+                score: 1,
+                actions: vec![crate::core::Action {
+                    label: "Copy".into(),
+                    kind: ActionKind::CopyText(input.to_string()),
+                }],
+                output: None,
+                preview: Some(crate::core::Preview::Sheet(Sheet::text(input, true))),
+            },
+            provider: "pipe",
+            section: "Input".into(),
+            highlight: Vec::new(),
         }
     }
 
@@ -1194,6 +1614,15 @@ fn separator() -> gtk::Separator {
         .build()
 }
 
+/// `text` cut to `max` characters, with an ellipsis when cut.
+fn shorten(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", cut.trim_end())
+}
+
 /// Title with the matched characters in accent, as Pango markup.
 fn title_markup(title: &str, highlight: &[u32], accent: &str) -> String {
     let set: HashSet<u32> = highlight.iter().copied().collect();
@@ -1427,7 +1856,13 @@ pub fn user_css_path() -> std::path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::title_markup;
+    use super::{shorten, title_markup};
+
+    #[test]
+    fn shorten_cuts_on_characters() {
+        assert_eq!(shorten("abc", 5), "abc");
+        assert_eq!(shorten("àèìòù and more", 6), "àèìòù…");
+    }
 
     #[test]
     fn markup_wraps_runs_and_escapes() {

@@ -89,6 +89,8 @@ impl Provider for SystemProvider {
                 },
             ]);
             Some(Item {
+                output: None,
+                preview: None,
                 body: None,
                 id: "system:update".into(),
                 title: format!("Update Parsec to {}", u.latest),
@@ -114,6 +116,8 @@ impl Provider for SystemProvider {
                     .chain(q.score_any(e.keywords.iter().copied()))
                     .max()?;
                 Some(Item {
+                    output: None,
+                    preview: None,
                     body: None,
                     id: e.id.into(),
                     title: e.title.into(),
