@@ -28,6 +28,8 @@ pub struct Manifest {
     pub icon: String,
     /// Free-form settings handed to the plugin in the `init` message.
     pub config: BTreeMap<String, toml::Value>,
+    /// Send the clipboard's text with every query.
+    pub clipboard: bool,
 }
 
 impl Default for Manifest {
@@ -43,6 +45,7 @@ impl Default for Manifest {
             exec: "main".into(),
             icon: String::new(),
             config: BTreeMap::new(),
+            clipboard: false,
         }
     }
 }

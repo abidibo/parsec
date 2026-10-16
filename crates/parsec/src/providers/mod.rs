@@ -22,6 +22,16 @@ pub mod windows;
 pub use crate::config::SharedConfig;
 use crate::core::Provider;
 
+/// The clipboard's text, read while the launcher has focus. `None` when
+/// empty, not text, or a password Parsec just copied: those stay private.
+pub async fn clipboard_text() -> Option<String> {
+    use gtk::prelude::*;
+    let display = gtk::gdk::Display::default()?;
+    let text = display.clipboard().read_text_future().await.ok()??;
+    let text = text.trim().to_string();
+    (!text.is_empty() && !crate::core::secrets::is_secret(&text)).then_some(text)
+}
+
 /// Every core provider, in ranking-neutral order. `daemon` is true in the
 /// resident process, which is the only one that should run background
 /// watchers.

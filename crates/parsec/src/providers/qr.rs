@@ -83,14 +83,6 @@ fn pixels(width: usize, colors: &[Color]) -> (Vec<u8>, usize) {
     (out, side)
 }
 
-/// What the clipboard holds as text, read while the launcher has focus.
-async fn clipboard_text() -> Option<String> {
-    let display = gdk::Display::default()?;
-    let text = display.clipboard().read_text_future().await.ok()??;
-    let text = text.trim().to_string();
-    (!text.is_empty()).then_some(text)
-}
-
 /// Put the PNG on the clipboard: `wl-copy` keeps serving it after the
 /// launcher hides, GTK is the fallback.
 fn copy_png(texture: &gdk::Texture) -> anyhow::Result<()> {
@@ -170,10 +162,9 @@ impl Provider for QrProvider {
             return vec![wifi_item(found)];
         }
         let (text, source) = if typed.is_empty() {
-            match clipboard_text().await {
-                // A password Parsec just copied stays off the screen.
-                Some(t) if !crate::core::secrets::is_secret(&t) => (t, "From the clipboard"),
-                _ => return Vec::new(),
+            match super::clipboard_text().await {
+                Some(t) => (t, "From the clipboard"),
+                None => return Vec::new(),
             }
         } else {
             (typed.to_string(), "Typed")

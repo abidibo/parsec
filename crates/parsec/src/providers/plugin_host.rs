@@ -294,14 +294,21 @@ impl PluginHost {
                 return Vec::new();
             }
         }
+        let wants_clipboard = plugin.borrow().info.manifest.clipboard;
+        let clipboard = if wants_clipboard {
+            super::clipboard_text().await
+        } else {
+            None
+        };
         let (id, msg) = {
             let mut p = plugin.borrow_mut();
             let id = p.next_id;
             p.next_id += 1;
-            (
-                id,
-                json!({"type": "query", "id": id, "text": q.text, "keyword": q.verb}),
-            )
+            let mut msg = json!({"type": "query", "id": id, "text": q.text, "keyword": q.verb});
+            if wants_clipboard {
+                msg["clipboard"] = json!(clipboard);
+            }
+            (id, msg)
         };
         let mut p = plugin.borrow_mut();
         let Some(r) = p.running.as_mut() else {

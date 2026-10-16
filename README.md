@@ -600,6 +600,7 @@ description = "Evaluate arithmetic"
 keywords = ["="]            # trigger words; empty = sees every query
 exec = "main.py"            # relative to the plugin folder, made executable on install
 icon = "accessories-calculator-symbolic"   # theme name or image file in the folder
+clipboard = false           # true: each query also carries the clipboard's text
 
 [config]                    # optional, handed to the plugin at start
 precision = 10
@@ -615,7 +616,10 @@ exactly one line on stdout:
 | `{"type":"activate","item":"...","data":...,"text":"..."}` | `{"type":"ok"}` |
 | `{"type":"browse","item":"...","data":...,"text":"..."}` | `{"type":"results","items":[...]}` |
 
-`text` is what the user typed after the keyword. An item is:
+`text` is what the user typed after the keyword. A plugin with
+`clipboard = true` also gets `"clipboard"`: the clipboard's text, or `null`
+when it is empty, not text, or a password Parsec just copied. To use it in a
+`browse` or `callback`, put it in that action's data. An item is:
 
 ```json
 {"title": "14", "subtitle": "2*(3+4) =", "icon": "optional", "id": "optional",
