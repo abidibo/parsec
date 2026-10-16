@@ -677,6 +677,7 @@ talks to over stdin/stdout, one JSON object per line. Plugins live in
 | [Dev toolbox](https://github.com/abidibo/parsec-devtools) | `dev` | UUIDs, Unix time and dates, JWTs, colours, base64, URL encoding and hashes, offline. Needs Python 3.8+. |
 | [Translator](https://github.com/abidibo/parsec-translator) | `tr` | Translates text with free online services, no account or key. Needs Python 3.8+. |
 | [Ask](https://github.com/abidibo/parsec-ask) | `ask`, `fix` | Asks Claude, or fixes and rewrites the text you copied, streaming the answer. Runs Claude Code headless, so it uses your Claude plan. Needs Claude Code and Python 3.8+. |
+| [Voice](https://github.com/abidibo/parsec-voice) | `say` | Dictation: speak, pause, and the text is pasted into the window you came from (Tab: search Parsec with it, or copy). Transcribed offline by Whisper, set up on first use (about 600 MB on disk with the default model). Needs PipeWire or PulseAudio and Python 3.8+ with `venv`. |
 
 Install one with `parsec plugin install <repository URL>`, for example:
 
