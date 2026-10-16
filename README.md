@@ -170,6 +170,7 @@ narrows the search to one of them.
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
+| `ip` | your local, public and VPN addresses; Enter copies |
 | `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard; `qr wifi` lets a phone join your Wi-Fi |
 | `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
@@ -210,6 +211,22 @@ commands of a terminal that is still open may not show until it closes;
 bash makes them immediate. Parsec's own runs are recorded at once in
 `~/.local/share/parsec/shell_history.json`, mode 0600. Settings ›
 Providers › Shell history turns it off or points at other files.
+
+### IP addresses
+
+`ip` lists the addresses worth knowing: the local one of the network card
+that reaches the internet (with its gateway), your public IPv4 and IPv6,
+any VPN with whether it carries all your traffic or only some, then other
+connected cards. `ip vpn`, `ip public` or `ip wifi` filter. Enter copies the
+address; Tab copies it with its prefix (`192.168.1.20/24`) or looks a public
+one up on ipinfo.io.
+
+Bridges, Docker networks and other virtual interfaces are left out: Parsec
+asks the kernel what each interface is rather than guessing from its name.
+The public address is asked from api.ipify.org only when you type `ip`, and
+kept for five minutes; turn that off in Settings › Providers or with
+`[ip] public_lookup = false`. Needs `ip` from iproute2, which every
+distribution ships; VPN names come from NetworkManager when it's there.
 
 ### QR codes
 
@@ -461,6 +478,7 @@ system = "sys"
 processes = "ps"
 browser = "h"
 qr = "qr"
+ip = "ip"
 
 [files]
 roots = ["~"]
@@ -752,7 +770,7 @@ crates/parsec/src
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
-│                    browser (Chromium and Firefox history and bookmarks), qr,
+│                    browser (Chromium and Firefox history and bookmarks), qr, ip,
 │                    shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```

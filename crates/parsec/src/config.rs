@@ -35,6 +35,7 @@ pub struct Config {
     pub shell: Shell,
     pub history: History,
     pub browser: Browser,
+    pub ip: Ip,
     pub updates: Updates,
 }
 
@@ -95,6 +96,22 @@ impl Default for Browser {
             profile: String::new(),
             path: String::new(),
             bookmarks_in_search: true,
+        }
+    }
+}
+
+/// The `ip` verb.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Ip {
+    /// Ask a lookup service for the public address (only under the verb).
+    pub public_lookup: bool,
+}
+
+impl Default for Ip {
+    fn default() -> Self {
+        Self {
+            public_lookup: true,
         }
     }
 }
@@ -284,6 +301,7 @@ pub struct Verbs {
     pub processes: String,
     pub browser: String,
     pub qr: String,
+    pub ip: String,
 }
 
 impl Default for Clipboard {
@@ -314,6 +332,7 @@ impl Default for Verbs {
             processes: "ps".into(),
             browser: "h".into(),
             qr: "qr".into(),
+            ip: "ip".into(),
         }
     }
 }
@@ -370,6 +389,7 @@ impl Default for Config {
             shell: Shell::default(),
             history: History::default(),
             browser: Browser::default(),
+            ip: Ip::default(),
             updates: Updates::default(),
         }
     }
@@ -524,6 +544,7 @@ system = {v_system}
 processes = {v_processes}
 browser = {v_browser}
 qr = {v_qr}
+ip = {v_ip}
 
 [files]
 # Only show files under these folders ("~" allowed). Empty = anywhere.
@@ -564,6 +585,11 @@ profile = {br_profile}
 # A profile folder to read instead, "~" allowed. Empty = use the above.
 path = {br_path}
 bookmarks_in_search = {br_in_search}
+
+[ip]
+# Under "ip": also show your public address, asked from api.ipify.org only
+# when you type the verb, then cached for five minutes.
+public_lookup = {ip_public}
 
 [shell]
 # Use the GNOME Shell extension when it is installed (windows, paste,
@@ -612,6 +638,8 @@ disabled = {plugins_disabled}
             v_processes = toml_str(&self.verbs.processes),
             v_browser = toml_str(&self.verbs.browser),
             v_qr = toml_str(&self.verbs.qr),
+            v_ip = toml_str(&self.verbs.ip),
+            ip_public = self.ip.public_lookup,
             br_enabled = self.browser.enabled,
             br_known = crate::providers::browser::known().join(", "),
             br_name = toml_str(&self.browser.name),
@@ -753,6 +781,7 @@ mod tests {
             shell: Shell::default(),
             history: History::default(),
             browser: Browser::default(),
+            ip: Ip::default(),
             updates: Updates::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),

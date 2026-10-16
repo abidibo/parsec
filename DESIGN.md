@@ -171,6 +171,14 @@ Target: GNOME 46+, Wayland.
   button that seeds the file from the plugin's `[config]` text, comments
   included.
 
+- 2026-10-16: `ip` verb, native. Interfaces classified from sysfs, never
+  by name: `device` = real card (`wireless`/`phy80211` = Wi-Fi), `tun_flags`
+  or DEVTYPE=wireguard = VPN, everything else hidden. iproute2 JSON for
+  addresses and `route get` toward a public probe address, which also says
+  whether a VPN carries all traffic. Public address from api.ipify.org /
+  api6.ipify.org, only under the verb, cached 5 min per route, off with
+  `[ip] public_lookup`.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

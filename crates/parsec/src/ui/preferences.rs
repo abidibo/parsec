@@ -402,6 +402,22 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
     ));
     page.add(&browser);
 
+    let ip = adw::PreferencesGroup::builder()
+        .title("IP addresses")
+        .description("Your local, public and VPN addresses under the ip verb.")
+        .build();
+    ip.add(&switch_row(
+        "Show the public address",
+        "Asks api.ipify.org, only when you type the verb",
+        cfg.borrow().ip.public_lookup,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.ip.public_lookup = on)
+        ),
+    ));
+    page.add(&ip);
+
     let files = adw::PreferencesGroup::builder()
         .title("Files")
         .description("Search by name through GNOME's Tracker index and plocate.")
@@ -598,6 +614,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             "QR code",
             v.qr,
             Box::new(|c: &mut Config, s: String| c.verbs.qr = s),
+        ),
+        (
+            "IP addresses",
+            v.ip,
+            Box::new(|c: &mut Config, s: String| c.verbs.ip = s),
         ),
     ] {
         let set = Rc::new(set);
