@@ -34,6 +34,7 @@ pub struct Config {
     pub appearance: Appearance,
     pub shell: Shell,
     pub history: History,
+    pub browser: Browser,
     pub updates: Updates,
 }
 
@@ -67,6 +68,33 @@ impl Default for History {
         Self {
             enabled: true,
             files: Vec::new(),
+        }
+    }
+}
+
+/// Browser history and bookmarks under the `h` verb.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct Browser {
+    pub enabled: bool,
+    /// "auto" (the default browser) or one of `providers::browser::known`.
+    pub name: String,
+    /// Profile folder or display name. Empty = the one the browser uses.
+    pub profile: String,
+    /// A profile folder to read, "~" allowed. Wins over `name` and `profile`.
+    pub path: String,
+    /// Also show bookmarks in plain searches, not only under the verb.
+    pub bookmarks_in_search: bool,
+}
+
+impl Default for Browser {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            name: "auto".into(),
+            profile: String::new(),
+            path: String::new(),
+            bookmarks_in_search: true,
         }
     }
 }
@@ -254,6 +282,7 @@ pub struct Verbs {
     pub windows: String,
     pub system: String,
     pub processes: String,
+    pub browser: String,
 }
 
 impl Default for Clipboard {
@@ -282,6 +311,7 @@ impl Default for Verbs {
             windows: "win".into(),
             system: "sys".into(),
             processes: "ps".into(),
+            browser: "h".into(),
         }
     }
 }
@@ -337,6 +367,7 @@ impl Default for Config {
             appearance: Appearance::default(),
             shell: Shell::default(),
             history: History::default(),
+            browser: Browser::default(),
             updates: Updates::default(),
         }
     }
@@ -489,6 +520,7 @@ services = {v_services}
 windows = {v_windows}
 system = {v_system}
 processes = {v_processes}
+browser = {v_browser}
 
 [files]
 # Only show files under these folders ("~" allowed). Empty = anywhere.
@@ -516,6 +548,19 @@ enabled = {hist_enabled}
 # files of each shell, whichever exist. Shells write these at their own
 # pace (often at exit); Parsec's own runs are recorded immediately.
 files = {hist_files}
+
+[browser]
+# Under "h": history and bookmarks of one browser. Bookmarks also show in
+# plain searches. Read from a private copy, refreshed at most every minute.
+enabled = {br_enabled}
+# "auto" follows your default browser. Or one of: {br_known}.
+name = {br_name}
+# Profile folder or name ("Default", "Profile 1", "default-release"...).
+# Empty = the profile the browser used last.
+profile = {br_profile}
+# A profile folder to read instead, "~" allowed. Empty = use the above.
+path = {br_path}
+bookmarks_in_search = {br_in_search}
 
 [shell]
 # Use the GNOME Shell extension when it is installed (windows, paste,
@@ -562,6 +607,13 @@ disabled = {plugins_disabled}
             v_windows = toml_str(&self.verbs.windows),
             v_system = toml_str(&self.verbs.system),
             v_processes = toml_str(&self.verbs.processes),
+            v_browser = toml_str(&self.verbs.browser),
+            br_enabled = self.browser.enabled,
+            br_known = crate::providers::browser::known().join(", "),
+            br_name = toml_str(&self.browser.name),
+            br_profile = toml_str(&self.browser.profile),
+            br_path = toml_str(&self.browser.path),
+            br_in_search = self.browser.bookmarks_in_search,
             shell_ext = self.shell.extension,
             updates_check = self.updates.check,
             hist_enabled = self.history.enabled,
@@ -696,6 +748,7 @@ mod tests {
             clipboard: Clipboard::default(),
             shell: Shell::default(),
             history: History::default(),
+            browser: Browser::default(),
             updates: Updates::default(),
             keepass: Keepass::default(),
             verbs: Verbs::default(),

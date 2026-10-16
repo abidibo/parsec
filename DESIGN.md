@@ -43,7 +43,6 @@ Target: GNOME 46+, Wayland.
 - Result actions on Tab (open folder, copy path, KDE Connect send, open in editor)
 - Verbs: `define`, `tz`, `color`, `uuid`, `pw`, `b64`, `json`
 - Emoji / Unicode picker with recents
-- Browser bookmarks and history
 - Opt-in natural-language actions via a local model or Claude, behind a prefix
 
 ## Status
@@ -117,6 +116,16 @@ Target: GNOME 46+, Wayland.
   infra.rs) or else by the socket's uid. Mapping root's sockets to a PID
   needs root; we don't ask for it. Adds ~20 ms to the off-thread scan,
   still cached for 2 s.
+
+- 2026-10-16: browser history and bookmarks under `h`; bookmarks also in
+  plain queries at half score, so they rank below apps. One browser at a
+  time (`auto` follows the https handler) from a table of installs: two
+  families, Chromium (`History` + `Bookmarks` JSON) and Firefox
+  (`places.sqlite`). Read via rusqlite (bundled) from a copy, with its
+  journal or WAL, in `$XDG_RUNTIME_DIR`, deleted after. Reads run in the
+  background and queries serve the last copy, so a 36 MB History never
+  costs a keystroke; re-read on mtime change, at most once a minute.
+  Opens with the browser's own desktop entry. Frecency ids are hashed.
 
 ## Non-negotiables
 

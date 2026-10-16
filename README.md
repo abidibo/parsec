@@ -170,6 +170,7 @@ narrows the search to one of them.
 | `svc name` | systemd services, user and system: status, logs, restart |
 | `win title` | open windows, with the Shell extension; also mixed into plain queries |
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
+| `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
 | `parsec` | Parsec's own entries: settings, quit, update when one is available |
 
@@ -208,6 +209,26 @@ commands of a terminal that is still open may not show until it closes;
 bash makes them immediate. Parsec's own runs are recorded at once in
 `~/.local/share/parsec/shell_history.json`, mode 0600. Settings ›
 Providers › Shell history turns it off or points at other files.
+
+### Browser history and bookmarks
+
+`h` alone lists the pages you visited most recently; `h text` matches titles
+and addresses, favouring pages you visit often and bookmarks. Bookmarks also
+show in plain searches, matched by name and ranked below apps. Enter opens the
+page in the browser it came from; Tab copies the URL.
+
+One browser is read at a time: your default browser, or the one set in
+Settings › Providers › Browser. Supported: Brave, Chrome, Chromium, Vivaldi,
+Edge (the Chromium family) and Firefox, LibreWolf, Zen (the Firefox family),
+native, Flatpak or Snap. For anything else built on one of the two, point
+`path` at its profile folder (the one holding `History` or `places.sqlite`).
+The profile is the one the browser used last unless you name one.
+
+A running browser keeps its database locked, so Parsec copies it to a private
+folder under `$XDG_RUNTIME_DIR`, which lives in memory, reads the 10,000 most
+recent pages and deletes the copy. It reads again when the files change, at
+most once a minute, in the background. Private windows leave no history, so
+they never show up here.
 
 ### Projects
 
@@ -416,6 +437,13 @@ accent = "system"      # system | "#rrggbb"
 [history]
 enabled = true         # command history under "$"
 files = []             # empty = $HISTFILE and the default zsh/bash/fish files
+
+[browser]
+enabled = true
+name = "auto"          # auto | brave | chrome | chromium | vivaldi | edge | firefox | librewolf | zen
+profile = ""           # empty = the profile used last
+path = ""              # a profile folder, overrides name and profile
+bookmarks_in_search = true
 
 [shell]
 extension = true       # use the Shell extension when it is running
@@ -639,6 +667,7 @@ crates/parsec/src
 ├── core/            Item and Action model, Provider trait, Matcher, Frecency, Engine, secrets
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
+│                    browser (Chromium and Firefox history and bookmarks),
 │                    shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```
@@ -677,6 +706,9 @@ install `libadwaita-1-dev` (Debian/Ubuntu) or `libadwaita-devel` (Fedora).
   from the clipboard after `clipboard_clear_secs`.
 - Other clipboard managers, including GNOME Shell extensions, still see
   whatever is copied. Parsec cannot prevent that.
+- Browser history is read from a copy in `$XDG_RUNTIME_DIR` (memory backed,
+  mode 0700) that is deleted right after reading. The frecency file stores
+  hashed ids for pages, never URLs.
 - The clipboard history file and the config file are plain text in your home
   directory; the history file is created with mode 0600.
 

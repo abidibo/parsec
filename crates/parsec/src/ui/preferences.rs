@@ -310,6 +310,98 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
     history.add(&found);
     page.add(&history);
 
+    let browser = adw::PreferencesGroup::builder()
+        .title("Browser")
+        .description(
+            "History and bookmarks of one browser under the browser verb. \
+             Read from a private copy, refreshed at most once a minute.",
+        )
+        .build();
+    browser.add(&switch_row(
+        "Show browser history",
+        "",
+        cfg.borrow().browser.enabled,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.browser.enabled = on)
+        ),
+    ));
+    browser.add(&switch_row(
+        "Bookmarks in every search",
+        "Not only under the verb; ranked below apps",
+        cfg.borrow().browser.bookmarks_in_search,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |on| edit(&cfg, |c| c.browser.bookmarks_in_search = on)
+        ),
+    ));
+    let names: Vec<&str> = std::iter::once("auto")
+        .chain(crate::providers::browser::known())
+        .collect();
+    let labels: Vec<String> = names
+        .iter()
+        .map(|n| match *n {
+            "auto" => "Default browser".to_string(),
+            n => {
+                let mut c = n.chars();
+                c.next()
+                    .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                    .unwrap_or_default()
+            }
+        })
+        .collect();
+    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let which = adw::ComboRow::builder()
+        .title("Browser")
+        .model(&gtk::StringList::new(&label_refs))
+        .build();
+    which.set_selected(
+        names
+            .iter()
+            .position(|n| *n == cfg.borrow().browser.name)
+            .unwrap_or(0) as u32,
+    );
+    which.connect_selected_notify(glib::clone!(
+        #[strong]
+        cfg,
+        move |r| {
+            let name = names.get(r.selected() as usize).copied().unwrap_or("auto");
+            edit(&cfg, |c| c.browser.name = name.into());
+        }
+    ));
+    browser.add(&which);
+    browser.add(&text_row(
+        "Profile",
+        "Folder or name, e.g. \"Profile 1\". Empty = the one used last.",
+        &cfg.borrow().browser.profile,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let text = text.trim().to_string();
+                edit(&cfg, |c| c.browser.profile = text);
+                true
+            }
+        ),
+    ));
+    browser.add(&text_row(
+        "Profile folder",
+        "Read this folder instead, ~ allowed. Empty = use the above.",
+        &cfg.borrow().browser.path,
+        glib::clone!(
+            #[strong]
+            cfg,
+            move |text| {
+                let text = text.trim().to_string();
+                edit(&cfg, |c| c.browser.path = text);
+                true
+            }
+        ),
+    ));
+    page.add(&browser);
+
     let files = adw::PreferencesGroup::builder()
         .title("Files")
         .description("Search by name through GNOME's Tracker index and plocate.")
@@ -496,6 +588,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             "Processes",
             v.processes,
             Box::new(|c: &mut Config, s: String| c.verbs.processes = s),
+        ),
+        (
+            "Browser history",
+            v.browser,
+            Box::new(|c: &mut Config, s: String| c.verbs.browser = s),
         ),
     ] {
         let set = Rc::new(set);

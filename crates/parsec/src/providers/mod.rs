@@ -2,6 +2,7 @@
 //! bridge provider speaking the JSON-lines protocol.
 
 pub mod apps;
+pub mod browser;
 pub mod clipboard;
 pub mod files;
 pub mod github;
@@ -35,6 +36,7 @@ pub fn all(cfg: SharedConfig, daemon: bool) -> Vec<Box<dyn Provider>> {
         Box::new(keepass::KeepassProvider::new(cfg.clone())),
         Box::new(shortcuts::ShortcutsProvider::new(cfg.clone())),
         Box::new(files::FilesProvider::new(cfg.clone())),
+        Box::new(browser::BrowserProvider::new(cfg.clone(), daemon)),
         Box::new(infra::SshProvider::new(cfg.clone())),
         Box::new(infra::DockerProvider::new(cfg.clone())),
         Box::new(infra::ServicesProvider::new(cfg.clone())),

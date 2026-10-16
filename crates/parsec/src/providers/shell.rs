@@ -107,7 +107,7 @@ impl ShellProvider {
     }
 }
 
-fn ago(secs: u64) -> String {
+pub(crate) fn ago(secs: u64) -> String {
     match secs {
         s if s < 60 => "just now".into(),
         s if s < 3600 => format!("{} min ago", s / 60),
