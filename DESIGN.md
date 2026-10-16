@@ -163,6 +163,14 @@ Target: GNOME 46+, Wayland.
   process (not a failure). Items gained `body` (plugin `text`): wrapped
   multi-line text under the title. Queries keep the 3 s limit.
 
+- 2026-10-16: plugin settings. `~/.config/parsec/plugins/<id>.toml`
+  overrides `[config]` key by key, read in read_manifest, so it survives
+  reinstalls (which replace the plugin folder). The host's rebuild stamp
+  includes the settings files' mtimes and a changed config restarts the
+  plugin, so `init` carries the new values. Settings › Plugins has an edit
+  button that seeds the file from the plugin's `[config]` text, comments
+  included.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

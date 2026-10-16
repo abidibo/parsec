@@ -589,6 +589,20 @@ parsec plugin remove calc
 
 A running daemon notices new, removed or disabled plugins by itself.
 
+### Settings
+
+A plugin's settings are the `[config]` section of its `plugin.toml`. Don't
+edit them there: an update replaces that file. Your own values go in
+`~/.config/parsec/plugins/<id>.toml`, where each key overrides the plugin's
+default and the rest keep theirs. The edit button next to a plugin in
+Settings › Plugins creates that file from the plugin's defaults, comments
+included, and opens it. Parsec restarts the plugin whenever you save it.
+
+```toml
+# ~/.config/parsec/plugins/ask.toml
+model = "haiku"
+```
+
 ### Writing one
 
 Two files are enough. `plugin.toml`:
@@ -603,8 +617,8 @@ exec = "main.py"            # relative to the plugin folder, made executable on 
 icon = "accessories-calculator-symbolic"   # theme name or image file in the folder
 clipboard = false           # true: each query also carries the clipboard's text
 
-[config]                    # optional, handed to the plugin at start
-precision = 10
+[config]                    # optional defaults, handed to the plugin at start
+precision = 10              # the user can override them, see Settings above
 ```
 
 and the executable, which reads lines from stdin and answers each one with

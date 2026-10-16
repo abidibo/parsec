@@ -262,6 +262,27 @@ fn refresh(
         ));
         row.add_suffix(&switch);
 
+        if !m.config.is_empty() {
+            let settings = gtk::Button::builder()
+                .icon_name("document-edit-symbolic")
+                .valign(gtk::Align::Center)
+                .css_classes(["flat"])
+                .tooltip_text("Edit settings")
+                .build();
+            let plugin = p.clone();
+            settings.connect_clicked(move |_| match plugins::ensure_settings(&plugin) {
+                Ok(path) => {
+                    let uri = format!("file://{}", path.display());
+                    let _ = gtk::gio::AppInfo::launch_default_for_uri(
+                        &uri,
+                        gtk::gio::AppLaunchContext::NONE,
+                    );
+                }
+                Err(e) => tracing::warn!("{e:#}"),
+            });
+            row.add_suffix(&settings);
+        }
+
         let remove = gtk::Button::builder()
             .icon_name("user-trash-symbolic")
             .valign(gtk::Align::Center)

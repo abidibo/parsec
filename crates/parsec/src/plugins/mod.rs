@@ -108,6 +108,79 @@ pub fn installed() -> Vec<Installed> {
     out
 }
 
+/// Your settings for plugins: `<id>.toml` files whose keys override the
+/// `[config]` defaults in each plugin's own plugin.toml. Kept apart from
+/// the plugin so a reinstall or update doesn't wipe them.
+pub fn settings_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("parsec")
+        .join("plugins")
+}
+
+pub fn settings_path(id: &str) -> PathBuf {
+    settings_dir().join(format!("{id}.toml"))
+}
+
+/// Every settings file with its modification time, to notice edits.
+pub fn settings_stamp() -> Vec<(std::ffi::OsString, Option<std::time::SystemTime>)> {
+    let mut out: Vec<_> = std::fs::read_dir(settings_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| (e.file_name(), e.metadata().and_then(|m| m.modified()).ok()))
+        .collect();
+    out.sort();
+    out
+}
+
+/// Lay the user's settings over the plugin's defaults, key by key.
+fn apply_settings(config: &mut BTreeMap<String, toml::Value>, text: &str) -> Result<()> {
+    let table: toml::Table = toml::from_str(text)?;
+    config.extend(table);
+    Ok(())
+}
+
+/// The `[config]` section of a plugin.toml as written, comments included,
+/// to start a settings file from.
+fn config_section(manifest_text: &str) -> String {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in manifest_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            inside = trimmed == "[config]";
+            continue;
+        }
+        if inside {
+            out.push(line);
+        }
+    }
+    while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// The plugin's settings file, created from its defaults the first time.
+pub fn ensure_settings(p: &Installed) -> Result<PathBuf> {
+    let path = settings_path(&p.manifest.id);
+    if path.exists() {
+        return Ok(path);
+    }
+    let manifest = std::fs::read_to_string(p.dir.join(MANIFEST)).unwrap_or_default();
+    let text = format!(
+        "# Settings for the {} plugin. Values here override its defaults and\n\
+         # survive updates; Parsec restarts the plugin when you save this file.\n\
+         # Delete a line to go back to the default.\n\n{}\n",
+        p.manifest.name,
+        config_section(&manifest)
+    );
+    std::fs::create_dir_all(settings_dir()).context("creating the settings folder")?;
+    std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
 pub fn read_manifest(plugin_dir: &Path) -> Result<Manifest> {
     let text = std::fs::read_to_string(plugin_dir.join(MANIFEST))
         .with_context(|| format!("no {MANIFEST} in {}", plugin_dir.display()))?;
@@ -130,6 +203,11 @@ pub fn read_manifest(plugin_dir: &Path) -> Result<Manifest> {
     }
     if !plugin_dir.join(&m.exec).is_file() {
         bail!("executable {} not found", m.exec);
+    }
+    if let Ok(settings) = std::fs::read_to_string(settings_path(&m.id)) {
+        if let Err(e) = apply_settings(&mut m.config, &settings) {
+            tracing::warn!(plugin = %m.id, "ignoring invalid settings file: {e}");
+        }
     }
     Ok(m)
 }
@@ -295,6 +373,28 @@ pub fn remove(id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_override_defaults_key_by_key() {
+        let mut config: BTreeMap<String, toml::Value> =
+            toml::from_str("model = \"sonnet\"\ncommand = []").unwrap();
+        apply_settings(&mut config, "model = \"haiku\"").unwrap();
+        assert_eq!(config["model"].as_str(), Some("haiku"));
+        assert!(config["command"].as_array().unwrap().is_empty());
+        assert!(apply_settings(&mut config, "model = ").is_err());
+    }
+
+    #[test]
+    fn settings_start_from_the_config_section_with_comments() {
+        let manifest = "name = \"Ask\"\nkeywords = [\"ask\"]\n\n[config]\n\
+                        model = \"sonnet\"    # which model\n\
+                        command = []\n\n[other]\nx = 1\n";
+        assert_eq!(
+            config_section(manifest),
+            "model = \"sonnet\"    # which model\ncommand = []"
+        );
+        assert_eq!(config_section("name = \"x\"\n"), "");
+    }
 
     #[test]
     fn ids_are_sanitized() {

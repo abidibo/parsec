@@ -196,11 +196,18 @@ struct ReplyAction {
     waiting: Option<String>,
 }
 
+type BuiltFrom = (
+    Option<SystemTime>,
+    Vec<String>,
+    Vec<(std::ffi::OsString, Option<SystemTime>)>,
+);
+
 pub struct PluginHost {
     cfg: SharedConfig,
     plugins: RefCell<Vec<Rc<RefCell<Plugin>>>>,
-    /// (plugins dir mtime, disabled list) the current set was built from.
-    built_from: RefCell<(Option<SystemTime>, Vec<String>)>,
+    /// What the current set was built from: plugins dir mtime, disabled
+    /// list, and the settings files with their mtimes.
+    built_from: RefCell<BuiltFrom>,
 }
 
 impl PluginHost {
@@ -208,7 +215,7 @@ impl PluginHost {
         Self {
             cfg,
             plugins: RefCell::new(Vec::new()),
-            built_from: RefCell::new((None, Vec::new())),
+            built_from: RefCell::new((None, Vec::new(), Vec::new())),
         }
     }
 
@@ -218,7 +225,8 @@ impl PluginHost {
             .and_then(|m| m.modified())
             .ok();
         let disabled = self.cfg.borrow().plugins.disabled.clone();
-        if *self.built_from.borrow() == (mtime, disabled.clone()) {
+        let stamp = (mtime, disabled.clone(), plugins::settings_stamp());
+        if *self.built_from.borrow() == stamp {
             return;
         }
         let wanted: Vec<Installed> = plugins::installed()
@@ -234,6 +242,8 @@ impl PluginHost {
                     w.manifest.id == p.info.manifest.id
                         && w.manifest.version == p.info.manifest.version
                         && w.manifest.exec == p.info.manifest.exec
+                        // New settings: restart so `init` hands them over.
+                        && w.manifest.config == p.info.manifest.config
                 })
             };
             if !keep {
@@ -250,7 +260,7 @@ impl PluginHost {
             }
         }
         tracing::debug!(count = current.len(), "plugins loaded");
-        *self.built_from.borrow_mut() = (mtime, disabled);
+        *self.built_from.borrow_mut() = stamp;
     }
 
     async fn ask(&self, plugin: &Rc<RefCell<Plugin>>, q: &Query<'_>) -> Vec<Item> {
