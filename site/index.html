@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parsec · Launch at warp speed</title>
+  <meta name="description" content="Parsec is a fast, hackable launcher for GNOME, written in Rust. Apps, projects, shell, GitHub, clipboard, passwords and more: press a key, type, press Enter.">
+  <meta name="theme-color" content="#07070b">
+  <meta property="og:title" content="Parsec · Launch at warp speed">
+  <meta property="og:description" content="A fast, hackable launcher for GNOME, written in Rust.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://abidibo.github.io/parsec/">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cantarell:wght@400;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M12 16h7"/></symbol>
+    <symbol id="i-pr" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4m2-2.5L10.5 7 13 9.5"/></symbol>
+    <symbol id="i-repo" viewBox="0 0 24 24"><path d="M5 19.5V5a2 2 0 0 1 2-2h12v15H7a2 2 0 0 0-2 2 2 2 0 0 0 2 2h12M9 7h6"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8m-3 3 2 2m-4 0 1.5 1.5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+    <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+    <symbol id="i-toggle" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="16" cy="12" r="3"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M9 4a2 2 0 1 1 4 0v1h4v4h1a2 2 0 1 1 0 4h-1v5H5v-4h1a2 2 0 1 0 0-4H5V5h4z"/></symbol>
+    <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-translate" viewBox="0 0 24 24"><path d="M4 5h9M8.5 3v2M6 5c1 3.5 3.5 6 7 7.5M11 5c-1 4-4 7-7 8.5M13 21l4-9 4 9M14.5 18h5"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 5 5L12 19a2.1 2.1 0 0 1-3-3l7.5-7.5a4 4 0 0 1-2-2z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 21a2 2 0 0 1 2-2h13v2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-pipe" viewBox="0 0 24 24"><path d="M4 7h6l4 10h6M16 13l4 4-4 4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5L20 16M20 20v-4h-4"/></symbol>
+    <symbol id="i-gnome" viewBox="0 0 24 24"><path d="M12 3c4 0 7 3 7 7.5S16 21 12 21s-7-6-7-10.5S8 3 12 3z"/><path d="M9.5 10.5h.01M14.5 10.5h.01"/></symbol>
+  </svg>
+
+  <header class="nav">
+    <a class="brand" href="#top" aria-label="Parsec home">
+      <img src="logo.svg" alt="" width="28" height="28">
+      <span>Parsec</span>
+    </a>
+    <nav aria-label="Sections">
+      <a href="#verbs">Features</a>
+      <a href="#plugins">Plugins</a>
+      <a href="#install">Install</a>
+      <a class="nav-gh" href="https://github.com/abidibo/parsec">
+        <svg class="ico"><use href="#i-star"/></svg><span>GitHub</span>
+      </a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <canvas class="warp" aria-hidden="true"></canvas>
+      <div class="hero-copy">
+        <p class="kicker"><span class="dot"></span>GNOME launcher · Rust · Wayland<span class="version" hidden></span></p>
+        <h1>Launch at <span class="grad">warp&nbsp;speed.</span></h1>
+        <p class="lede">Press a key, type, press Enter. Apps, your git projects, the shell, GitHub, clipboard history, passwords, files and servers in one fast, dark panel that's easy to extend.</p>
+        <div class="install-line" data-copy="curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash">
+          <span class="prompt">$</span>
+          <code>curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash</code>
+          <button class="copy" type="button" aria-label="Copy the install command">
+            <svg class="ico"><use href="#i-copy"/></svg>
+          </button>
+        </div>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/abidibo/parsec"><svg class="ico"><use href="#i-star"/></svg>Star on GitHub</a>
+          <a class="btn" href="https://github.com/abidibo/parsec#readme"><svg class="ico"><use href="#i-book"/></svg>Read the docs</a>
+        </div>
+      </div>
+
+      <div class="device" aria-label="Parsec running on a GNOME desktop: an animated demo">
+        <div class="laptop">
+          <div class="lid">
+            <span class="camera"></span>
+            <div class="screen">
+              <div class="desktop">
+                <div class="topbar">
+                  <div class="workspaces"><span class="ws on"></span><span class="ws"></span><span class="ws"></span></div>
+                  <div class="clock">Tue Oct 20 &nbsp;09:41</div>
+                  <div class="tray">
+                    <svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/></svg>
+                    <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>
+                    <svg viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2M5 10h9v4H5z"/></svg>
+                  </div>
+                </div>
+                <div class="nebula"></div>
+
+                <div class="pz" id="pz">
+                  <div class="pz-search">
+                    <svg class="pz-sicon"><use href="#i-search"/></svg>
+                    <span class="pz-stages"></span>
+                    <span class="pz-chip" hidden></span>
+                    <span class="pz-input"><span class="pz-text"></span><span class="pz-caret"></span><span class="pz-placeholder">Search apps, projects, files…</span></span>
+                  </div>
+                  <div class="pz-sep"></div>
+                  <div class="pz-body">
+                    <div class="pz-results" aria-live="off"></div>
+                    <aside class="pz-preview"><div class="pz-preview-inner"></div></aside>
+                  </div>
+                  <div class="pz-footer">
+                    <div class="pz-hints">
+                      <span><kbd>⇥</kbd>actions</span>
+                      <span><kbd>↵</kbd>run</span>
+                      <span class="hint-pipe"><kbd>ctrl+↵</kbd>pipe</span>
+                    </div>
+                    <div class="pz-brand">
+                      <svg class="pz-gear"><use href="#i-gear"/></svg>
+                      <img src="logo.svg" alt="" width="14" height="14">Parsec
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="deck"><span class="notch"></span></div>
+        </div>
+        <div class="scenes" role="tablist" aria-label="Demo scenes">
+          <button role="tab" data-scene="0"><svg class="ico"><use href="#i-search"/></svg>Search<i></i></button>
+          <button role="tab" data-scene="1"><svg class="ico"><use href="#i-eye"/></svg>Quick Look<i></i></button>
+          <button role="tab" data-scene="2"><svg class="ico"><use href="#i-pipe"/></svg>Pipes<i></i></button>
+          <button role="tab" data-scene="3"><svg class="ico"><use href="#i-puzzle"/></svg>Plugins<i></i></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="verbs" class="section">
+      <div class="section-head">
+        <p class="eyebrow">One box, every tool</p>
+        <h2>Type a few letters.<br>Or start with a verb.</h2>
+        <p>Plain text searches everything at once, ranked by what you pick most. A short verb narrows it to one tool.</p>
+      </div>
+      <div class="verbs">
+        <article class="verb t-apps"><span class="tile"><svg><use href="#i-laptop"/></svg></span><div><h3>Apps <kbd>fire</kbd></h3><p>Fuzzy matched, ranked by how often and how recently you launch them.</p></div></article>
+        <article class="verb t-projects"><span class="tile"><svg><use href="#i-folder"/></svg></span><div><h3>Projects <kbd>myproj</kbd></h3><p>Your git repositories, with branch, last commit and files.</p></div></article>
+        <article class="verb t-shell"><span class="tile"><svg><use href="#i-terminal"/></svg></span><div><h3>Shell <kbd>$ cmd</kbd></h3><p>Run a command in your terminal, or pick one from your history.</p></div></article>
+        <article class="verb t-github"><span class="tile"><svg><use href="#i-pr"/></svg></span><div><h3>GitHub <kbd>gh</kbd> <kbd>pr</kbd></h3><p>Your repositories and open pull requests, through the gh CLI.</p></div></article>
+        <article class="verb t-clipboard"><span class="tile"><svg><use href="#i-clipboard"/></svg></span><div><h3>Clipboard <kbd>cb</kbd></h3><p>History with pinned snippets. Passwords never land in it.</p></div></article>
+        <article class="verb t-keepass"><span class="tile"><svg><use href="#i-key"/></svg></span><div><h3>KeePass <kbd>kp</kbd></h3><p>Unlock once and copy a password: it stays out of the history and is cleared after a timeout.</p></div></article>
+        <article class="verb t-files"><span class="tile"><svg><use href="#i-file"/></svg></span><div><h3>Files <kbd>f</kbd></h3><p>Anywhere on disk, through GNOME's index and plocate.</p></div></article>
+        <article class="verb t-ssh"><span class="tile"><svg><use href="#i-server"/></svg></span><div><h3>SSH <kbd>ssh</kbd></h3><p>Hosts from your ssh config. Enter connects in your terminal.</p></div></article>
+        <article class="verb t-docker"><span class="tile"><svg><use href="#i-box"/></svg></span><div><h3>Docker <kbd>dk</kbd></h3><p>Containers: shell, logs, start, stop and restart.</p></div></article>
+        <article class="verb t-services"><span class="tile"><svg><use href="#i-cog"/></svg></span><div><h3>Services <kbd>svc</kbd></h3><p>systemd units, user and system: status, logs, restart.</p></div></article>
+        <article class="verb t-system"><span class="tile"><svg><use href="#i-toggle"/></svg></span><div><h3>System <kbd>sys</kbd></h3><p>Dark style, do not disturb, Wi-Fi, mute, lock, settings panels.</p></div></article>
+        <article class="verb t-windows"><span class="tile"><svg><use href="#i-window"/></svg></span><div><h3>Windows <kbd>win</kbd></h3><p>Switch to any open window, with the Shell extension.</p></div></article>
+        <article class="verb t-images"><span class="tile"><svg><use href="#i-image"/></svg></span><div><h3>Images <kbd>img</kbd></h3><p>Resize, convert, crop or trim the images you copied in Files.</p></div></article>
+        <article class="verb t-qr"><span class="tile"><svg><use href="#i-qr"/></svg></span><div><h3>QR codes <kbd>qr</kbd></h3><p>Any text as a QR code, drawn as you type. Even your Wi-Fi.</p></div></article>
+        <article class="verb t-history"><span class="tile"><svg><use href="#i-history"/></svg></span><div><h3>Browser <kbd>h</kbd></h3><p>Your browser's history and bookmarks.</p></div></article>
+        <article class="verb t-processes"><span class="tile"><svg><use href="#i-activity"/></svg></span><div><h3>Processes <kbd>ps</kbd></h3><p>Heaviest first. <code>ps :3000</code> finds who's on a port.</p></div></article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Small details, big speed</p>
+        <h2>More than a search box.</h2>
+      </div>
+      <div class="bento">
+        <article class="card wide">
+          <span class="card-icon"><svg class="ico"><use href="#i-pipe"/></svg></span>
+          <h3>Pipes</h3>
+          <p>Ctrl+Enter hands a result on to the next verb. Turn a pull request into a QR code, or ask Claude about a diff, without copying anything.</p>
+          <div class="pipeline" aria-hidden="true">
+            <span class="stage">pr #42</span><span class="pipe">›</span><span class="stage">qr</span>
+            <span class="gap"></span>
+            <span class="stage">$ git diff</span><span class="pipe">›</span><span class="stage">ask review this</span>
+          </div>
+        </article>
+        <article class="card">
+          <span class="card-icon"><svg class="ico"><use href="#i-eye"/></svg></span>
+          <h3>Quick Look</h3>
+          <p>A pane slides in beside the results: images, text, a folder's contents, a project's README rendered as Markdown with its git state.</p>
+        </article>
+        <article class="card">
+          <span class="card-icon"><svg class="ico"><use href="#i-bolt"/></svg></span>
+          <h3>Instant</h3>
+          <p>A resident Rust daemon with a GTK 4 window, already running before you press the key. No network calls while you type.</p>
+        </article>
+        <article class="card">
+          <span class="card-icon"><svg class="ico"><use href="#i-laptop"/></svg></span>
+          <h3>Follows you</h3>
+          <p>Your editor, terminal and project folders are detected on first run and written to one config file you can carry between machines.</p>
+        </article>
+        <article class="card">
+          <span class="card-icon"><svg class="ico"><use href="#i-gnome"/></svg></span>
+          <h3>GNOME through and through</h3>
+          <p>libadwaita and Wayland first. An optional Shell extension adds window switching and pastes straight into the window you came from.</p>
+        </article>
+        <article class="card full">
+          <span class="card-icon"><svg class="ico"><use href="#i-refresh"/></svg></span>
+          <h3>Updates in one click</h3>
+          <p>Parsec checks for new releases and plugin updates once a day. Update from Settings with a click: see what changed in each plugin first, and Parsec restarts itself on the new version.</p>
+          <div class="update-demo" aria-hidden="true">
+            <div class="ud-row"><span class="ud-name">Ask <em>0.1.0 → 0.2.0</em></span><span class="ud-btn">Update…</span></div>
+            <div class="ud-log"><span>05f6322</span> feat: answers in the preview pane, rendered as Markdown</div>
+          </div>
+        </article>
+      </div>
+      <div class="keys" aria-label="Keyboard">
+        <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+        <span><kbd>Tab</kbd> next action</span>
+        <span><kbd>↵</kbd> run</span>
+        <span><kbd>Ctrl</kbd><kbd>↵</kbd> pipe</span>
+        <span><kbd>Alt</kbd><kbd>1…9</kbd> nth result</span>
+        <span><kbd>Esc</kbd> back</span>
+        <span><kbd>Ctrl</kbd><kbd>,</kbd> settings</span>
+      </div>
+    </section>
+
+    <section id="plugins" class="section plugins">
+      <div class="plugins-copy">
+        <p class="eyebrow">Hackable</p>
+        <h2>Plugins in any language.</h2>
+        <p>A plugin is a small program that reads JSON lines on stdin and writes them on stdout. Results can stream as they're written, preview Markdown, and use the clipboard. Install one from a git URL, and Parsec keeps it up to date.</p>
+        <div class="plugin-cards">
+          <a class="plugin" href="https://github.com/abidibo/parsec-ask"><span class="tile t-plugins"><svg><use href="#i-question"/></svg></span><span><b>Ask</b> <kbd>ask</kbd> <kbd>fix</kbd><small>Ask Claude, or fix and rewrite the text you copied.</small></span></a>
+          <a class="plugin" href="https://github.com/abidibo/parsec-voice"><span class="tile t-plugins"><svg><use href="#i-mic"/></svg></span><span><b>Voice</b> <kbd>say</kbd><small>Dictate. Whisper transcribes it offline and pastes it in.</small></span></a>
+          <a class="plugin" href="https://github.com/abidibo/parsec-translator"><span class="tile t-plugins"><svg><use href="#i-translate"/></svg></span><span><b>Translator</b> <kbd>tr</kbd><small>Translate text with free services, no account needed.</small></span></a>
+          <a class="plugin" href="https://github.com/abidibo/parsec-devtools"><span class="tile t-plugins"><svg><use href="#i-wrench"/></svg></span><span><b>Dev toolbox</b> <kbd>dev</kbd><small>UUIDs, Unix time, JWTs, colours, base64 and hashes.</small></span></a>
+        </div>
+      </div>
+      <div class="code-window">
+        <div class="cw-bar"><span></span><span></span><span></span><b>~/.local/share/parsec/plugins/dice</b></div>
+        <div class="cw-tabs"><button class="on" type="button" data-file="0">main.py</button><button type="button" data-file="1">plugin.toml</button></div>
+<pre class="cw-file on"><code><span class="k">import</span> json, random, sys
+
+<span class="k">for</span> line <span class="k">in</span> sys.stdin:
+    msg = json.loads(line)
+    <span class="k">if</span> msg[<span class="s">"type"</span>] == <span class="s">"query"</span>:
+        n = str(random.randint(<span class="n">1</span>, <span class="n">6</span>))
+        item = {<span class="s">"title"</span>: <span class="s">f"You rolled </span>{n}<span class="s">"</span>,
+                <span class="s">"actions"</span>: [{<span class="s">"label"</span>: <span class="s">"Copy"</span>, <span class="s">"copy"</span>: n}]}
+        reply = {<span class="s">"type"</span>: <span class="s">"results"</span>, <span class="s">"id"</span>: msg[<span class="s">"id"</span>],
+                 <span class="s">"items"</span>: [item]}
+    <span class="k">elif</span> msg[<span class="s">"type"</span>] == <span class="s">"init"</span>:
+        reply = {<span class="s">"type"</span>: <span class="s">"ready"</span>}
+    <span class="k">else</span>:
+        reply = {<span class="s">"type"</span>: <span class="s">"ok"</span>}
+    print(json.dumps(reply), flush=<span class="k">True</span>)</code></pre>
+<pre class="cw-file"><code><span class="p">name</span> = <span class="s">"Dice"</span>
+<span class="p">keywords</span> = [<span class="s">"roll"</span>]
+<span class="p">exec</span> = <span class="s">"main.py"</span>
+<span class="p">icon</span> = <span class="s">"applications-games-symbolic"</span></code></pre>
+      </div>
+    </section>
+
+    <section id="install" class="section install">
+      <div class="install-card">
+        <img class="install-logo" src="logo.svg" alt="" width="64" height="64">
+        <h2>Ready for warp?</h2>
+        <p>One command installs the prebuilt binary, the desktop entry and a <kbd>Ctrl</kbd><kbd>Space</kbd> shortcut, then starts Parsec.</p>
+        <div class="terminal">
+          <div class="cw-bar"><span></span><span></span><span></span><b>Terminal</b></div>
+          <div class="install-line big" data-copy="curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash">
+            <span class="prompt">$</span>
+            <code>curl -fsSL https://raw.githubusercontent.com/abidibo/parsec/main/install.sh | bash</code>
+            <button class="copy" type="button" aria-label="Copy the install command"><svg class="ico"><use href="#i-copy"/></svg></button>
+          </div>
+        </div>
+        <ul class="facts">
+          <li><svg class="ico"><use href="#i-check"/></svg>GNOME 46 or newer on Wayland</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>Prebuilt for x86_64 and ARM64; builds from source elsewhere</li>
+          <li><svg class="ico"><use href="#i-check"/></svg>Updates itself from Settings</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <a class="brand" href="#top"><img src="logo.svg" alt="" width="22" height="22"><span>Parsec</span></a>
+    <p>MIT licensed. Made by <a href="https://github.com/abidibo">abidibo</a>, in Rust, GTK 4 and libadwaita.</p>
+    <a href="https://github.com/abidibo/parsec">GitHub</a>
+  </footer>
+
+  <script src="main.js" defer></script>
+</body>
+</html>

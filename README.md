@@ -130,6 +130,12 @@ The [release workflow](.github/workflows/release.yml) builds x86_64 and ARM64 bi
 Ubuntu 24.04 and publishes them with their checksums. It fails if the tag and `Cargo.toml`
 disagree.
 
+### Website
+
+The website at <https://abidibo.github.io/parsec/> is plain HTML, CSS and JavaScript in
+`site/`, with no build step. Preview it with `python3 -m http.server -d site`; the
+[website workflow](.github/workflows/pages.yml) publishes it when `site/` changes on `main`.
+
 ## First run
 
 Press Ctrl+Space. The panel opens empty. Type a few letters of an application
