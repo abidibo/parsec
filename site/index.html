@@ -107,6 +107,7 @@
                   </div>
                 </div>
                 <div class="nebula"></div>
+                <div class="toast" hidden><svg><use href="#i-check"/></svg><span><b>Password copied.</b> Kept out of the clipboard history, cleared in 15 s.</span><i></i></div>
 
                 <div class="pz" id="pz">
                   <div class="pz-search">
@@ -141,7 +142,7 @@
           <button role="tab" data-scene="0"><svg class="ico"><use href="#i-search"/></svg>Search<i></i></button>
           <button role="tab" data-scene="1"><svg class="ico"><use href="#i-eye"/></svg>Quick Look<i></i></button>
           <button role="tab" data-scene="2"><svg class="ico"><use href="#i-pipe"/></svg>Pipes<i></i></button>
-          <button role="tab" data-scene="3"><svg class="ico"><use href="#i-puzzle"/></svg>Plugins<i></i></button>
+          <button role="tab" data-scene="3"><svg class="ico"><use href="#i-key"/></svg>Passwords<i></i></button>
         </div>
       </div>
     </section>
@@ -181,11 +182,12 @@
         <article class="card wide">
           <span class="card-icon"><svg class="ico"><use href="#i-pipe"/></svg></span>
           <h3>Pipes</h3>
-          <p>Ctrl+Enter hands a result on to the next verb. Turn a pull request into a QR code, or ask Claude about a diff, without copying anything.</p>
+          <p>Ctrl+Enter hands a result on to the next verb, and a <code>$</code> stage runs in the background and hands on its output. Send a crashing container's logs to Claude, or turn your staged changes into a commit message, without copying a thing.</p>
           <div class="pipeline" aria-hidden="true">
-            <span class="stage">pr #42</span><span class="pipe">›</span><span class="stage">qr</span>
-            <span class="gap"></span>
-            <span class="stage">$ git diff</span><span class="pipe">›</span><span class="stage">ask review this</span>
+            <span class="stage">dk postgres</span><span class="pipe">›</span><span class="stage">$ docker logs --tail 80 {}</span><span class="pipe">›</span><span class="stage">ask why does it crash?</span>
+          </div>
+          <div class="pipeline" aria-hidden="true">
+            <span class="stage">parsec</span><span class="pipe">›</span><span class="stage">$ git diff --staged</span><span class="pipe">›</span><span class="stage">ask write a commit message</span>
           </div>
         </article>
         <article class="card">
