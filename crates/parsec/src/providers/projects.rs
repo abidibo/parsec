@@ -198,8 +198,10 @@ fn summary(repo: PathBuf) -> Preview {
             let icon = readme
                 .is_none()
                 .then(|| gtk::prelude::Cast::upcast(gio::ThemedIcon::new("folder-symbolic")));
+            let markdown = readme.as_ref().is_some_and(|r| r.1);
             Some(Sheet {
-                text: readme,
+                text: readme.map(|r| r.0),
+                markdown,
                 facts,
                 icon,
                 ..Sheet::default()
@@ -208,8 +210,9 @@ fn summary(repo: PathBuf) -> Preview {
     }))
 }
 
-/// The first lines of the repository's README, whatever its extension.
-fn readme(repo: &Path) -> Option<String> {
+/// The first lines of the repository's README, whatever its extension,
+/// and whether it is Markdown.
+fn readme(repo: &Path) -> Option<(String, bool)> {
     let file = std::fs::read_dir(repo)
         .ok()?
         .flatten()
@@ -219,6 +222,10 @@ fn readme(repo: &Path) -> Option<String> {
             p.file_stem()
                 .is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("readme"))
         })?;
+    let markdown = file.extension().is_some_and(|e| {
+        let e = e.to_string_lossy();
+        e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown")
+    });
     let text = std::fs::read_to_string(file).ok()?;
     let mut lines: Vec<&str> = text.lines().take(121).collect();
     let cut = lines.len() > 120;
@@ -227,7 +234,7 @@ fn readme(repo: &Path) -> Option<String> {
     if cut {
         out.push_str("\n…");
     }
-    Some(out)
+    Some((out, markdown))
 }
 
 // ---------------------------------------------------------------- drill-downs

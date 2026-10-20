@@ -1,4 +1,5 @@
 pub mod hotkey;
+mod markdown;
 pub mod plugins_page;
 pub mod preferences;
 pub mod preview;

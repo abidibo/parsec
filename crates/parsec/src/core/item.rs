@@ -126,6 +126,8 @@ pub struct Sheet {
     pub text: Option<String>,
     /// Show `text` in a monospace face (code, logs, file contents).
     pub mono: bool,
+    /// `text` is Markdown, shown rendered (a README, a `.md` file).
+    pub markdown: bool,
     pub facts: Vec<(String, String)>,
 }
 

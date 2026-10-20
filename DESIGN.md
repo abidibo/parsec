@@ -240,6 +240,14 @@ Target: GNOME 46+, Wayland.
   changes, lazily), clipboard (text, CSS colour swatch), plugin
   `preview`, pipe input.
 
+- 2026-10-20: Markdown in Quick Look. `Sheet::markdown`; `ui/markdown.rs`
+  turns pulldown-cmark events into Pango markup for the same label (links
+  via GtkLabel's `<a>`, opened by its default handler; the launcher hides
+  on focus loss). Images and HTML dropped (README badges), relative links
+  shown as text, tables flattened to a line per row: Pango has no tables
+  and the pane is 360 px. Set for `.md`/`.markdown` READMEs and
+  `text/markdown` files; not yet in the plugin protocol.
+
 ## Non-negotiables
 
 - Portable. Nothing machine-specific in code: editor, terminal and project

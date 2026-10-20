@@ -253,7 +253,9 @@ results and follows the selection:
 - the input of a pipe, in full
 
 Files are read off the main thread, scaled down, and cached until the
-launcher opens again.
+launcher opens again. READMEs and `.md` files show rendered: headings,
+emphasis, code, lists, quotes and links (click to open). Images and raw
+HTML are left out, and each table row becomes one line.
 
 ### Shell runner and history
 

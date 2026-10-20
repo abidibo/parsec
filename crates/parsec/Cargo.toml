@@ -23,6 +23,7 @@ gtk = { version = "0.11", package = "gtk4", features = ["v4_14"] }
 keepass = "0.15"
 nucleo-matcher = "0.3.1"
 percent-encoding = "2.3.2"
+pulldown-cmark = { version = "0.13.4", default-features = false }
 qrcode = { version = "0.14.1", default-features = false }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }

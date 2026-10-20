@@ -84,6 +84,7 @@ impl PreviewPane {
         });
         let text = gtk::Label::builder()
             .wrap(true)
+            .focus_on_click(false)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
             .xalign(0.0)
             .yalign(0.0)
@@ -188,7 +189,12 @@ impl PreviewPane {
         self.swatch.set_visible(sheet.swatch.is_some());
 
         let text = sheet.text.as_deref().unwrap_or("");
-        self.text.set_label(&shown_text(text));
+        let shown = shown_text(text);
+        if sheet.markdown {
+            self.text.set_markup(&super::markdown::to_markup(&shown));
+        } else {
+            self.text.set_text(&shown);
+        }
         if sheet.mono {
             self.text.add_css_class("mono");
         } else {
@@ -261,9 +267,10 @@ pub async fn file_sheet(path: PathBuf) -> Option<Sheet> {
         picture: facts
             .picture
             .and_then(|png| gdk::Texture::from_bytes(&glib::Bytes::from_owned(png)).ok()),
-        mono: true,
+        markdown: gio::content_type_is_a(&facts.content_type, "text/markdown"),
         ..Sheet::default()
     };
+    sheet.mono = !sheet.markdown;
     if sheet.picture.is_none() {
         sheet.icon = Some(gio::content_type_get_icon(&facts.content_type));
     }
