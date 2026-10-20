@@ -10,6 +10,8 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+pub mod updates;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Manifest {
@@ -280,8 +282,17 @@ fn install_git(url: &str) -> Result<Installed> {
         let _ = std::fs::remove_dir_all(&staging);
         bail!("git clone failed for {url}");
     }
+    let commit = updates::head_of(&staging);
     let _ = std::fs::remove_dir_all(staging.join(".git"));
-    finish_install(&staging)
+    let installed = finish_install(&staging)?;
+    let origin = updates::Origin {
+        url: url.to_string(),
+        commit,
+    };
+    if let Err(e) = updates::record(&installed.dir, &origin) {
+        tracing::warn!(id = %installed.manifest.id, "{e:#}");
+    }
+    Ok(installed)
 }
 
 /// Locate the manifest in the staged tree (root, or a single subfolder as
