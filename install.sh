@@ -14,6 +14,8 @@
 #   PARSEC_VERSION=latest             release tag to install, for example 1.1.0
 #   PARSEC_FROM_SOURCE=1              build from source instead of downloading a binary
 #   PARSEC_RELEASES=<url>             where to download releases from, for mirrors and testing
+#   PARSEC_UNATTENDED=1               never prompt: exit 3, before changing anything, when the
+#                                     update needs a password or a build (Parsec's own updater)
 set -euo pipefail
 
 # Empty when piped from curl. Read it here: inside a function bash reports "main".
@@ -38,9 +40,19 @@ say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+unattended() { [[ ${PARSEC_UNATTENDED:-0} == 1 ]]; }
+# Parsec's updater reads exit code 3 as "run me in a terminal instead".
+needs_terminal() { printf 'needs a terminal: %s\n' "$*" >&2; exit 3; }
 
 as_root() {
-  if [[ $EUID -eq 0 ]]; then "$@"; else sudo "$@"; fi
+  if [[ $EUID -eq 0 ]]; then
+    "$@"
+  elif unattended; then
+    sudo -n true 2>/dev/null || needs_terminal "installing system packages asks for your password"
+    sudo -n "$@"
+  else
+    sudo "$@"
+  fi
 }
 
 # install_packages runtime|build
@@ -171,6 +183,7 @@ fetch_prebuilt() {
 # Builds a checkout, or downloaded sources, and sets FILES to a directory laid out like a release.
 build_from_source() {
   local src="$CHECKOUT" ref
+  unattended && needs_terminal "this update has to be built from source"
   install_packages build
   ensure_rust
 

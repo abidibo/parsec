@@ -240,6 +240,20 @@ Target: GNOME 46+, Wayland.
   changes, lazily), clipboard (text, CSS colour swatch), plugin
   `preview`, pipe input.
 
+- 2026-10-20: One-click updates. Parsec: the install script runs in the
+  background (`PARSEC_UNATTENDED=1`, output in ~/.cache/parsec/update.log)
+  in a scope of its own, since it stops this daemon; it exits 3 before
+  changing anything when it would need sudo or a source build, and the
+  update is offered in a terminal as before. `updating_to` in the update
+  cache lets the new daemon confirm. Plugins: git installs record
+  `.parsec-origin.json` (URL, commit); the daily check is `git ls-remote`
+  per remote, cached a day like the release; changes come from a
+  blobless bare clone (log since the installed commit, new plugin.toml
+  version). Older installs fall back to `homepage` and are recognized by
+  comparing git blob hashes of their files with the remote tree, so an
+  upgrade doesn't announce updates nobody has. Tracks the default branch,
+  not tags: most plugins have none. `update::watch` keeps the gear, the
+  About card and the Plugins page in step with every check.
 - 2026-10-20: Markdown in Quick Look. `Sheet::markdown`; `ui/markdown.rs`
   turns pulldown-cmark events into Pango markup for the same label (links
   via GtkLabel's `<a>`, opened by its default handler; the launcher hides

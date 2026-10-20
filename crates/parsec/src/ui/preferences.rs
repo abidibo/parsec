@@ -5,7 +5,7 @@
 use crate::config::{Config, SharedConfig};
 use adw::prelude::*;
 use gtk::glib;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 thread_local! {
@@ -15,9 +15,19 @@ thread_local! {
 /// Show the preferences window, creating it if needed. One at a time.
 pub fn open(app: &adw::Application, cfg: SharedConfig) {
     tracing::info!("opening settings");
+    present(app, cfg);
+}
+
+/// Open the settings on the page named `page` (e.g. "plugins").
+pub fn open_at(app: &adw::Application, cfg: SharedConfig, page: &str) {
+    tracing::info!(page, "opening settings");
+    present(app, cfg).set_visible_page_name(page);
+}
+
+fn present(app: &adw::Application, cfg: SharedConfig) -> adw::PreferencesWindow {
     if let Some(existing) = OPEN.with(|o| o.borrow().clone()) {
         existing.present();
-        return;
+        return existing;
     }
     let window = build(app, cfg);
     window.connect_close_request(|w| {
@@ -28,6 +38,7 @@ pub fn open(app: &adw::Application, cfg: SharedConfig) {
     });
     OPEN.with(|o| *o.borrow_mut() = Some(window.clone()));
     window.present();
+    window
 }
 
 fn build(app: &adw::Application, cfg: SharedConfig) -> adw::PreferencesWindow {
@@ -685,33 +696,7 @@ fn launcher_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pre
             .css_classes(["dim-label", "caption"])
             .build(),
     );
-    if let Some(u) = crate::update::available() {
-        let link = gtk::LinkButton::builder()
-            .label(format!("{} is available", u.latest))
-            .uri(crate::update::RELEASES_URL)
-            .css_classes(["caption"])
-            .build();
-        card.append(&link);
-        if crate::update::can_install() {
-            let button = gtk::Button::builder()
-                .label(format!("Update to {}", u.latest))
-                .tooltip_text("Runs the install script in your terminal; Parsec restarts")
-                .halign(gtk::Align::Center)
-                .css_classes(["suggested-action", "pill"])
-                .build();
-            button.connect_clicked(glib::clone!(
-                #[weak]
-                window,
-                move |_| {
-                    if let Some(app) = window.application() {
-                        app.activate_action("update", None);
-                    }
-                    window.close();
-                }
-            ));
-            card.append(&button);
-        }
-    }
+    card.append(&update_area(window));
     about.add(&card);
     page.add(&about);
 
@@ -1002,6 +987,191 @@ fn extension_group(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::P
         ),
     ));
     group
+}
+
+/// Under the version: the update found and a button to install it, or a
+/// button to look for one. Follows checks made elsewhere too.
+fn update_area(window: &adw::PreferencesWindow) -> gtk::Box {
+    let area = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .halign(gtk::Align::Center)
+        .margin_top(8)
+        .build();
+    let busy = Rc::new(Cell::new(false));
+    fill_update_area(&area, window, &busy, None);
+    let (weak, win) = (area.downgrade(), window.downgrade());
+    crate::update::watch(glib::clone!(
+        #[strong]
+        busy,
+        move || {
+            let (Some(area), Some(window)) = (weak.upgrade(), win.upgrade()) else {
+                return false;
+            };
+            if !busy.get() {
+                fill_update_area(&area, &window, &busy, None);
+            }
+            true
+        }
+    ));
+    area
+}
+
+fn fill_update_area(
+    area: &gtk::Box,
+    window: &adw::PreferencesWindow,
+    busy: &Rc<Cell<bool>>,
+    note: Option<&str>,
+) {
+    while let Some(child) = area.first_child() {
+        area.remove(&child);
+    }
+    let caption = |text: &str| {
+        gtk::Label::builder()
+            .label(text)
+            .wrap(true)
+            .justify(gtk::Justification::Center)
+            .max_width_chars(48)
+            .css_classes(["dim-label", "caption"])
+            .build()
+    };
+    if let Some(note) = note {
+        area.append(&caption(note));
+    }
+    let Some(u) = crate::update::available() else {
+        let check = pill("Check for updates", false);
+        check.connect_clicked(glib::clone!(
+            #[weak]
+            area,
+            #[weak]
+            window,
+            #[strong]
+            busy,
+            move |check| {
+                busy.set(true);
+                working(check, "Checking…");
+                glib::spawn_future_local(glib::clone!(
+                    #[strong]
+                    busy,
+                    async move {
+                        let (parsec, plugins) = crate::update::check_now().await;
+                        let mut note = match parsec {
+                            Err(e) => format!("Couldn't reach GitHub: {e:#}"),
+                            Ok(_) if crate::update::is_dev_build() => {
+                                "This is a development build: Parsec itself isn't checked."
+                                    .to_string()
+                            }
+                            Ok(_) => "Parsec is up to date.".to_string(),
+                        };
+                        match plugins.len() {
+                            0 => {}
+                            1 => note.push_str(" 1 plugin has an update: see Plugins."),
+                            n => note.push_str(&format!(" {n} plugins have updates: see Plugins.")),
+                        }
+                        busy.set(false);
+                        fill_update_area(&area, &window, &busy, Some(&note));
+                    }
+                ));
+            }
+        ));
+        area.append(&check);
+        return;
+    };
+    let link = gtk::LinkButton::builder()
+        .label(format!("{} is available", u.latest))
+        .uri(format!("{}/tag/{}", crate::update::RELEASES_URL, u.latest))
+        .halign(gtk::Align::Center)
+        .css_classes(["caption"])
+        .build();
+    area.append(&link);
+    if !crate::update::can_install() {
+        area.append(&caption(
+            "Run the install command again to update, or use your package manager.",
+        ));
+        return;
+    }
+    let update = pill(&format!("Update to {}", u.latest), true);
+    update.set_tooltip_text(Some("Installs in the background; Parsec restarts"));
+    update.connect_clicked(glib::clone!(
+        #[weak]
+        area,
+        #[weak]
+        window,
+        #[strong]
+        busy,
+        move |update| {
+            busy.set(true);
+            working(update, "Updating…");
+            glib::spawn_future_local(glib::clone!(
+                #[strong]
+                busy,
+                async move {
+                    // On success the script restarts Parsec, closing this window.
+                    let failure = crate::update::install().await.err();
+                    busy.set(false);
+                    let Some(failure) = failure else {
+                        fill_update_area(&area, &window, &busy, None);
+                        return;
+                    };
+                    let note = match &failure {
+                        crate::update::Failure::NeedsTerminal(why) => {
+                            format!("{why}, so this update has to run in a terminal.")
+                        }
+                        crate::update::Failure::Failed(why) => {
+                            format!("The update failed: {why}")
+                        }
+                    };
+                    while let Some(child) = area.first_child() {
+                        area.remove(&child);
+                    }
+                    area.append(
+                        &gtk::Label::builder()
+                            .label(note)
+                            .wrap(true)
+                            .justify(gtk::Justification::Center)
+                            .max_width_chars(48)
+                            .css_classes(["caption"])
+                            .build(),
+                    );
+                    let terminal = pill("Update in a terminal", true);
+                    terminal.connect_clicked(glib::clone!(
+                        #[weak]
+                        window,
+                        move |_| {
+                            if let Some(app) = window.application() {
+                                app.activate_action("update-in-terminal", None);
+                            }
+                            window.close();
+                        }
+                    ));
+                    area.append(&terminal);
+                }
+            ));
+        }
+    ));
+    area.append(&update);
+}
+
+fn pill(label: &str, suggested: bool) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .label(label)
+        .halign(gtk::Align::Center)
+        .css_classes(["pill"])
+        .build();
+    if suggested {
+        button.add_css_class("suggested-action");
+    }
+    button
+}
+
+/// A button showing a spinner and `label` while its work runs.
+pub(super) fn working(button: &gtk::Button, label: &str) {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    content.set_halign(gtk::Align::Center);
+    content.append(&gtk::Spinner::builder().spinning(true).build());
+    content.append(&gtk::Label::new(Some(label)));
+    button.set_child(Some(&content));
+    button.set_sensitive(false);
 }
 
 fn edit(cfg: &SharedConfig, f: impl FnOnce(&mut Config)) {

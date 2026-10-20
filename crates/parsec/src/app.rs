@@ -45,7 +45,7 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
                 glib::clone!(
                     #[strong]
                     launcher,
-                    move |u| launcher.set_update(u)
+                    move || launcher.show_updates()
                 ),
             );
             *window.borrow_mut() = Some(launcher);
@@ -75,9 +75,12 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
     app
 }
 
-/// `app.preferences` opens the settings window, `app.quit` stops the daemon,
-/// `app.update` installs the release the update check found. Reachable from
-/// the launcher (Ctrl+,), the system provider, notifications and the CLI.
+/// `app.preferences` opens the settings window, `app.plugin-updates` its
+/// Plugins page, `app.quit` stops the daemon, `app.update` installs the
+/// release the update check found in the background and
+/// `app.update-in-terminal` in a terminal, `app.whats-new` opens the running
+/// version's release notes. Reachable from the launcher (Ctrl+,), the system
+/// provider, notifications and the CLI.
 fn register_actions(app: &adw::Application, cfg: providers::SharedConfig) {
     let prefs = gio::SimpleAction::new("preferences", None);
     prefs.connect_activate(glib::clone!(
@@ -89,13 +92,47 @@ fn register_actions(app: &adw::Application, cfg: providers::SharedConfig) {
     ));
     app.add_action(&prefs);
 
+    let plugin_updates = gio::SimpleAction::new("plugin-updates", None);
+    plugin_updates.connect_activate(glib::clone!(
+        #[weak]
+        app,
+        #[strong]
+        cfg,
+        move |_, _| crate::ui::preferences::open_at(&app, cfg.clone(), "plugins")
+    ));
+    app.add_action(&plugin_updates);
+
     let update = gio::SimpleAction::new("update", None);
-    update.connect_activate(move |_, _| {
-        if let Err(e) = crate::update::install(&cfg.borrow()) {
+    update.connect_activate(glib::clone!(
+        #[weak]
+        app,
+        move |_, _| {
+            glib::spawn_future_local(async move {
+                if let Err(failure) = crate::update::install().await {
+                    tracing::warn!("update: {failure}");
+                    notify_update_failure(&app, &failure);
+                }
+            });
+        }
+    ));
+    app.add_action(&update);
+
+    let in_terminal = gio::SimpleAction::new("update-in-terminal", None);
+    in_terminal.connect_activate(move |_, _| {
+        if let Err(e) = crate::update::install_in_terminal(&cfg.borrow()) {
             tracing::warn!("update: {e:#}");
         }
     });
-    app.add_action(&update);
+    app.add_action(&in_terminal);
+
+    let whats_new = gio::SimpleAction::new("whats-new", None);
+    whats_new.connect_activate(|_, _| {
+        let _ = gio::AppInfo::launch_default_for_uri(
+            &crate::update::release_url(),
+            crate::core::scope::launch_context().as_ref(),
+        );
+    });
+    app.add_action(&whats_new);
 
     let quit = gio::SimpleAction::new("quit", None);
     quit.connect_activate(glib::clone!(
@@ -107,6 +144,18 @@ fn register_actions(app: &adw::Application, cfg: providers::SharedConfig) {
         }
     ));
     app.add_action(&quit);
+}
+
+/// A background update that didn't happen, with the terminal as a way on.
+fn notify_update_failure(app: &adw::Application, failure: &crate::update::Failure) {
+    use crate::update::Failure;
+    let n = gio::Notification::new(match failure {
+        Failure::NeedsTerminal(_) => "Parsec can't update in the background",
+        Failure::Failed(_) => "Parsec couldn't update",
+    });
+    n.set_body(Some(&failure.to_string()));
+    n.add_button("Update in a terminal", "app.update-in-terminal");
+    app.send_notification(Some("update"), &n);
 }
 
 /// Reload the config whenever its file changes. The monitor is leaked on

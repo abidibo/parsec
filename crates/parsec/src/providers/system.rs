@@ -95,7 +95,10 @@ impl Provider for SystemProvider {
                 id: "system:update".into(),
                 title: format!("Update Parsec to {}", u.latest),
                 subtitle: Some(if installable {
-                    format!("You have {}. Enter updates in a terminal", u.current)
+                    format!(
+                        "You have {}. Enter updates in the background; Parsec restarts",
+                        u.current
+                    )
                 } else {
                     format!(
                         "You have {}. Enter copies the install command; run it in a terminal",
@@ -107,8 +110,34 @@ impl Provider for SystemProvider {
                 actions,
             })
         });
+        let plugins = crate::update::plugin_updates();
+        let plugin_update = (!plugins.is_empty())
+            .then(|| {
+                let names: Vec<&str> = plugins.iter().map(|a| a.name.as_str()).collect();
+                let score = q
+                    .score("Update plugins")
+                    .into_iter()
+                    .chain(q.score_any(["update", "upgrade", "plugins", "parsec"]))
+                    .max()?;
+                Some(Item {
+                    output: None,
+                    preview: None,
+                    body: None,
+                    id: "system:plugin-updates".into(),
+                    title: "Update plugins".into(),
+                    subtitle: Some(format!("{}. Enter shows what changed", names.join(", "))),
+                    icon: Icon::Named("software-update-available-symbolic".into()),
+                    score,
+                    actions: vec![Action {
+                        label: "Review".into(),
+                        kind: app_action("plugin-updates"),
+                    }],
+                })
+            })
+            .flatten();
         update
             .into_iter()
+            .chain(plugin_update)
             .chain(ENTRIES.iter().filter_map(|e| {
                 let score = q
                     .score(e.title)

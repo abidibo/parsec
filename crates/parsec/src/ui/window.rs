@@ -1521,13 +1521,29 @@ impl LauncherWindow {
 
     // ------------------------------------------------------------ chrome
 
-    /// Tint the gear and say why in its tooltip.
-    pub fn set_update(&self, update: &crate::update::Update) {
-        self.gear.add_css_class("has-update");
-        self.gear.set_tooltip_text(Some(&format!(
-            "Parsec {} is available (you have {}). Settings: Ctrl+,",
-            update.latest, update.current
-        )));
+    /// Tint the gear while updates are available and say which in its
+    /// tooltip.
+    pub fn show_updates(&self) {
+        let mut found = Vec::new();
+        if let Some(u) = crate::update::available() {
+            found.push(format!(
+                "Parsec {} is available (you have {}).",
+                u.latest, u.current
+            ));
+        }
+        let plugins = crate::update::plugin_updates();
+        if !plugins.is_empty() {
+            let names: Vec<&str> = plugins.iter().map(|a| a.name.as_str()).collect();
+            found.push(format!("Plugin updates: {}.", names.join(", ")));
+        }
+        if found.is_empty() {
+            self.gear.remove_css_class("has-update");
+            self.gear.set_tooltip_text(Some("Settings (Ctrl+,)"));
+        } else {
+            self.gear.add_css_class("has-update");
+            found.push("Settings: Ctrl+,".into());
+            self.gear.set_tooltip_text(Some(&found.join(" ")));
+        }
     }
 
     fn set_hints(&self, hints: &[(&str, &str)]) {

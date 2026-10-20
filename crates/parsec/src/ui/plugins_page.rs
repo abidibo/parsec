@@ -1,5 +1,6 @@
 //! Settings › Plugins: installed plugins with an on/off switch and a menu
-//! (settings, folder, remove), and install from a zip, a folder, or a git URL.
+//! (settings, folder, remove), updates for those installed from git (what
+//! changed, then install), and install from a zip, a folder, or a git URL.
 
 use crate::config::SharedConfig;
 use crate::plugins;
@@ -10,6 +11,7 @@ use std::rc::Rc;
 
 pub fn page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::PreferencesPage {
     let page = adw::PreferencesPage::builder()
+        .name("plugins")
         .title("Plugins")
         .icon_name("application-x-addon-symbolic")
         .build();
@@ -24,6 +26,48 @@ pub fn page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Preferen
     let rows: Rc<RefCell<Vec<adw::ActionRow>>> = Rc::new(RefCell::new(Vec::new()));
     refresh(&installed, &rows, &cfg);
     page.add(&installed);
+
+    let check = gtk::Button::builder()
+        .label("Check for updates")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .tooltip_text("Asks each plugin's git repository for new commits")
+        .build();
+    check.connect_clicked(glib::clone!(
+        #[weak]
+        window,
+        move |check| {
+            crate::ui::preferences::working(check, "Checking…");
+            let check = check.clone();
+            glib::spawn_future_local(async move {
+                let (_, found) = crate::update::check_now().await;
+                check.set_label("Check for updates");
+                check.set_sensitive(true);
+                let message = match found.len() {
+                    0 => "Every plugin is up to date".to_string(),
+                    1 => "1 plugin has an update".to_string(),
+                    n => format!("{n} plugins have updates"),
+                };
+                window.add_toast(adw::Toast::new(&message));
+            });
+        }
+    ));
+    installed.set_header_suffix(Some(&check));
+    // Rows follow every check, the daily one included, and every update.
+    let (weak, weak_rows, weak_cfg) = (
+        installed.downgrade(),
+        Rc::downgrade(&rows),
+        Rc::downgrade(&cfg),
+    );
+    crate::update::watch(move || {
+        let (Some(group), Some(rows), Some(cfg)) =
+            (weak.upgrade(), weak_rows.upgrade(), weak_cfg.upgrade())
+        else {
+            return false;
+        };
+        refresh(&group, &rows, &cfg);
+        true
+    });
 
     // Install.
     let install = adw::PreferencesGroup::builder()
@@ -210,6 +254,7 @@ fn refresh(
     }
     let all = plugins::installed();
     let disabled = cfg.borrow().plugins.disabled.clone();
+    let updates = crate::update::plugin_updates();
     let mut new_rows = Vec::new();
     if all.is_empty() {
         let row = adw::ActionRow::builder()
@@ -314,12 +359,111 @@ fn refresh(
             .css_classes(["flat"])
             .tooltip_text("More")
             .build();
+        if let Some(a) = updates.iter().find(|a| a.id == m.id) {
+            let update = gtk::Button::builder()
+                .label("Update…")
+                .valign(gtk::Align::Center)
+                .css_classes(["suggested-action"])
+                .tooltip_text("See what changed, then update")
+                .build();
+            let a = a.clone();
+            update.connect_clicked(move |button| {
+                glib::spawn_future_local(review(button.clone(), a.clone()));
+            });
+            row.add_suffix(&update);
+        }
         row.add_suffix(&more);
         row.add_suffix(&switch);
         group.add(&row);
         new_rows.push(row);
     }
     *rows.borrow_mut() = new_rows;
+}
+
+/// Show what an update brings and install it if asked to.
+async fn review(button: gtk::Button, a: plugins::updates::Available) {
+    let Some(window) = button.root().and_downcast::<adw::PreferencesWindow>() else {
+        return;
+    };
+    crate::ui::preferences::working(&button, "Checking…");
+    let origin = a.origin.clone();
+    let changes = gtk::gio::spawn_blocking(move || plugins::updates::changes(&origin))
+        .await
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("thread panicked")));
+    button.set_label("Update…");
+    button.set_sensitive(true);
+
+    let mut body = Vec::new();
+    let mut commits = Vec::new();
+    match changes {
+        Ok(c) => {
+            match c.version.as_deref() {
+                Some(v) if v != a.version => body.push(format!("{} → {v}", a.version)),
+                _ => body.push(format!("Still version {}, with new commits.", a.version)),
+            }
+            if !c.complete {
+                body.push(
+                    "It was installed before Parsec kept track of plugin versions, \
+                     so these are its latest changes."
+                        .into(),
+                );
+            }
+            commits = c.commits;
+        }
+        Err(e) => body.push(format!("Couldn't read what changed: {e:#}")),
+    }
+    let dialog = adw::AlertDialog::new(Some(&format!("Update {}?", a.name)), None);
+    dialog.set_body(&body.join("\n\n"));
+    if !commits.is_empty() {
+        let lines: Vec<String> = commits
+            .iter()
+            .map(|(hash, subject)| {
+                format!(
+                    "<span font_family='monospace' alpha='60%'>{}</span>  {}",
+                    glib::markup_escape_text(hash),
+                    glib::markup_escape_text(subject)
+                )
+            })
+            .collect();
+        let list = gtk::Label::builder()
+            .label(lines.join("\n"))
+            .use_markup(true)
+            .wrap(true)
+            .xalign(0.0)
+            .build();
+        let scroller = gtk::ScrolledWindow::builder()
+            .child(&list)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .max_content_height(260)
+            .build();
+        dialog.set_extra_child(Some(&scroller));
+    }
+    dialog.add_responses(&[("cancel", "Cancel"), ("update", "Update")]);
+    dialog.set_response_appearance("update", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("update"));
+    dialog.set_close_response("cancel");
+    if dialog.choose_future(Some(&window)).await != "update" {
+        return;
+    }
+
+    crate::ui::preferences::working(&button, "Updating…");
+    // On success the rows are rebuilt, this button with them.
+    let toast = match crate::update::update_plugin(&a).await {
+        Ok(p) => adw::Toast::new(&format!(
+            "Updated {} to {}",
+            p.manifest.name, p.manifest.version
+        )),
+        Err(e) => {
+            button.set_label("Update…");
+            button.set_sensitive(true);
+            adw::Toast::builder()
+                .title(format!("{e:#}"))
+                .timeout(8)
+                .build()
+        }
+    };
+    window.add_toast(toast);
 }
 
 fn open_path(path: &std::path::Path) {

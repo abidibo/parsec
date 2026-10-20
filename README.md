@@ -504,18 +504,27 @@ written.
 Open the settings with the gear in the launcher's footer, Ctrl+, while the
 launcher is open, typing `parsec`, or `parsec settings` in a shell.
 
-Once a day Parsec asks GitHub for its latest release. When there is a
-newer one the gear in the footer turns accent coloured, `parsec` lists an
-*Update Parsec* entry, the settings card shows an *Update* button, and you
-get one desktop notification per version, with an *Update* button too.
-Update opens your terminal on the [install script](#install), pinned to the
-new version: you watch it download, check and install, Parsec restarts, and
-the terminal waits for Enter. Tab on the entry copies the install command
-or opens the releases page instead. Parsec offers the button only when it
-runs from `~/.local/bin/parsec`, where the script installs it; a build from
-a checkout, `cargo install` or a package gets the copy-the-command entry.
-Nothing but the version is sent. Turn it off in Settings › Launcher or
-with `[updates] check = false`. Builds without a release tag never check.
+Once a day Parsec asks GitHub for its latest release, and each plugin
+installed from git for its latest commit (see [Plugin
+updates](#updates)). *Check for updates* in Settings › Launcher asks right
+away. When there is a newer release the gear in the footer turns accent
+coloured, `parsec` lists an *Update Parsec* entry, the settings card shows
+an *Update* button, and you get one desktop notification per version,
+with an *Update* button too.
+
+Update runs the [install script](#install) in the background, pinned to
+the new version: it downloads, checks and installs the release, then
+restarts Parsec, which confirms with a notification. Its output goes to
+`~/.cache/parsec/update.log`. When the update would need your password
+(a missing system package) or a build from source, the script stops
+before changing anything, and Parsec offers *Update in a terminal*
+instead, where you can answer sudo and watch it build. Tab on the entry
+copies the install command or opens the releases page instead. Parsec
+offers the button only when it runs from `~/.local/bin/parsec`, where the
+script installs it; a build from a checkout, `cargo install` or a package
+gets the copy-the-command entry. Nothing but the version is sent. Turn
+the daily checks off in Settings › Launcher or with `[updates] check =
+false`. Builds without a release tag never check for Parsec itself.
 
 To try the update flow without a new release, build an older-looking
 binary and let it find the current one:
@@ -605,7 +614,7 @@ bookmarks_in_search = true
 extension = true       # use the Shell extension when it is running
 
 [updates]
-check = true           # daily check of the latest GitHub tag
+check = true           # daily check of the latest release and plugin commits
 
 [[shortcuts]]
 name = "Google"
@@ -706,6 +715,25 @@ parsec plugin remove calc
 ```
 
 A running daemon notices new, removed or disabled plugins by itself.
+
+### Updates
+
+A plugin installed from git remembers its repository and commit. Once a
+day, with Parsec's own check, Parsec asks each repository for its default
+branch's commit (`git ls-remote`, nothing is downloaded); one that has
+moved on means an update. The gear turns accent coloured, `parsec` lists
+*Update plugins*, and you get one notification per new set of updates.
+In Settings › Plugins, *Update…* on a plugin's row shows what changed, the
+new version and the commit messages since yours, before anything is
+installed; *Check for updates* asks right away. Updating installs the
+plugin again from its repository, so your settings in
+`~/.config/parsec/plugins/` stay. Plugins installed from a zip or a folder
+have nowhere to update from.
+
+Plugins installed before Parsec 1.10.0 didn't record their commit. Parsec
+falls back to the plugin's `homepage` and compares the installed files
+with the repository's: when they match, it records the commit quietly;
+otherwise it offers the update.
 
 ### Settings
 
