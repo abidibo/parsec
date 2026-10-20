@@ -182,6 +182,8 @@ struct ReplyPreview {
     text: Option<String>,
     #[serde(default)]
     mono: bool,
+    #[serde(default)]
+    markdown: bool,
     /// `[["Size", "2 MB"], ...]`
     #[serde(default)]
     facts: Vec<(String, String)>,
@@ -635,6 +637,7 @@ fn preview(info: &Installed, p: ReplyPreview) -> Option<Preview> {
     Some(Preview::Sheet(Sheet {
         text,
         mono: p.mono,
+        markdown: p.markdown,
         facts: p.facts,
         ..Sheet::default()
     }))

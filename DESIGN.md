@@ -246,7 +246,7 @@ Target: GNOME 46+, Wayland.
   on focus loss). Images and HTML dropped (README badges), relative links
   shown as text, tables flattened to a line per row: Pango has no tables
   and the pane is 360 px. Set for `.md`/`.markdown` READMEs and
-  `text/markdown` files; not yet in the plugin protocol.
+  `text/markdown` files, and plugin previews with `"markdown": true`.
 
 ## Non-negotiables
 

@@ -764,14 +764,15 @@ action's data to use it later, as with the clipboard. An item is:
 ```json
 {"title": "14", "subtitle": "2*(3+4) =", "icon": "optional", "id": "optional",
  "score": 500, "text": "optional, several lines",
- "preview": {"text": "optional", "mono": false, "facts": [["Size", "2 MB"]]},
+ "preview": {"text": "optional", "mono": false, "markdown": false,
+             "facts": [["Size", "2 MB"]]},
  "actions": [{"label": "Copy", "copy": "14"}]}
 ```
 
 `text` is shown in full under the title, wrapped, for answers and drafts
 that don't fit a one-line subtitle. `preview` fills the [Quick
 Look](#quick-look) pane while the row is selected: text (monospace with
-`mono`) and label/value facts, or `{"file": "path"}` to show a file the
+`mono`, rendered as Markdown with `markdown`) and label/value facts, or `{"file": "path"}` to show a file the
 way Parsec shows its own (relative paths are inside the plugin folder).
 Ctrl+Enter pipes an item's first `copy`, `paste` or `open` value.
 
