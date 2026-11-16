@@ -36,7 +36,7 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
             let bridge = crate::gnome_shell::bridge();
             bridge.set_enabled(cfg.borrow().shell.extension);
             glib::spawn_future_local(async move { bridge.connect().await });
-            register_actions(app, cfg.clone());
+            register_actions(app, cfg.clone(), window.clone());
             let engine = Rc::new(Engine::new(providers::all(cfg.clone(), true)));
             let launcher = LauncherWindow::new(app, engine);
             crate::update::start(
@@ -81,7 +81,22 @@ pub fn build(background: bool, open_settings: bool) -> adw::Application {
 /// `app.update-in-terminal` in a terminal, `app.whats-new` opens the running
 /// version's release notes. Reachable from the launcher (Ctrl+,), the system
 /// provider, notifications and the CLI.
-fn register_actions(app: &adw::Application, cfg: providers::SharedConfig) {
+fn register_actions(
+    app: &adw::Application,
+    cfg: providers::SharedConfig,
+    window: Rc<RefCell<Option<LauncherWindow>>>,
+) {
+    let show_query = gio::SimpleAction::new("show-query", Some(glib::VariantTy::STRING));
+    show_query.connect_activate(move |_, param| {
+        let Some(q) = param.and_then(|p| p.get::<String>()) else {
+            return;
+        };
+        if let Some(w) = window.borrow().as_ref() {
+            w.show_query(&q);
+        }
+    });
+    app.add_action(&show_query);
+
     let prefs = gio::SimpleAction::new("preferences", None);
     prefs.connect_activate(glib::clone!(
         #[weak]

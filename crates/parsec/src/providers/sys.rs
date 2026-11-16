@@ -304,7 +304,7 @@ fn commands() -> Vec<Entry> {
         })
         .collect();
 
-    // Screenshot: GNOME's own capture UI, through the Shell.
+    // Screenshot: GNOME's own capture UI, through the desktop portal.
     items.push((
         Item {
             output: None,
@@ -318,24 +318,7 @@ fn commands() -> Vec<Entry> {
             actions: vec![Action {
                 label: "Capture".into(),
                 kind: ActionKind::Callback(Rc::new(|| {
-                    let bus = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE)?;
-                    bus.call(
-                        Some("org.gnome.Shell.Screenshot"),
-                        "/org/gnome/Shell/Screenshot",
-                        "org.gnome.Shell.Screenshot",
-                        "InteractiveScreenshot",
-                        None,
-                        None,
-                        gio::DBusCallFlags::NONE,
-                        2000,
-                        gio::Cancellable::NONE,
-                        |r| {
-                            if let Err(e) = r {
-                                tracing::warn!("screenshot call failed: {e}");
-                            }
-                        },
-                    );
-                    Ok(())
+                    super::ocr::interactive_screenshot(|_| {})
                 })),
             }],
         },

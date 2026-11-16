@@ -890,6 +890,11 @@ impl LauncherWindow {
         self.entrance.play();
     }
 
+    pub fn show_query(&self, query: &str) {
+        self.show();
+        self.set_query(query);
+    }
+
     pub fn hide(&self) {
         if self.prompt.borrow().is_some() {
             self.leave_prompt(false);

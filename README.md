@@ -47,6 +47,7 @@ Runtime:
 | `plocate` | files anywhere on disk; Tracker alone covers Documents, Downloads, Desktop and media | recommended |
 | `docker`, `systemctl` | the `dk` and `svc` verbs | optional |
 | `gh` (GitHub CLI), logged in | the `gh` and `pr` verbs | optional |
+| `tesseract` (`tesseract-ocr`) | the `ocr` verb (extracting text from images and screenshots) | optional |
 | the Parsec Shell extension | window switching, paste into the previous window, event-driven clipboard on any GNOME (see [below](#gnome-shell-extension)) | optional |
 
 Build, only when no prebuilt binary fits your system (the installer handles it):
@@ -181,6 +182,7 @@ narrows the search to one of them.
 | `sys dark` | system toggles and commands: dark style, do not disturb, Wi-Fi, mute, lock, suspend, settings panels… |
 | `ip` | your local, public and VPN addresses; Enter copies |
 | `img 50%` | resize, convert, crop or trim the images you copied in Files |
+| `ocr` | read text from a copied image, screenshot or screen area (`ocr ita` for another language) |
 | `qr text` | a QR code of the text, drawn as you type; `qr` alone encodes the clipboard; `qr wifi` lets a phone join your Wi-Fi |
 | `h text` | your browser's history and bookmarks; bookmarks also show in plain queries |
 | `ps name` | your processes, heaviest first: terminate, kill, watch; `ps :3000` finds who listens on a port |
@@ -315,6 +317,22 @@ Images go through gdk-pixbuf, which GTK already brings: PNG, JPEG, TIFF and
 BMP work everywhere, WebP when `webp-pixbuf-loader` is installed (most GNOME
 systems have it). JPEG and WebP are saved at quality 85. Animated GIFs keep
 their first frame only.
+
+### OCR
+
+`ocr` reads the text in an image on the clipboard (a screenshot, a picture
+copied from a web page), an image copied in Files, or a file piped in
+(`f page.png` ⇢ `ocr`). The full text is shown in Quick Look; Enter pastes
+it into the window you came from when the Shell extension is active, or
+copies it to the clipboard, and Ctrl+Enter pipes it into the next verb
+(`ocr` ⇢ `tr >en`, `ocr` ⇢ `ask`).
+
+`ocr ita` or `ocr eng+ita` passes a language code to `tesseract`. When no
+image is on the clipboard (or as a second row when one is), *Capture screen
+area* opens GNOME's interactive screenshot tool and re-opens the launcher on
+`ocr` with the captured image's text ready to inspect, paste, copy or pipe.
+Needs `tesseract` (`tesseract-ocr`); if it or a requested language pack is
+missing, `ocr` offers to install it in your terminal.
 
 ### IP addresses
 
@@ -593,6 +611,7 @@ browser = "h"
 qr = "qr"
 ip = "ip"
 img = "img"
+ocr = "ocr"
 
 [files]
 roots = ["~"]
@@ -919,7 +938,7 @@ crates/parsec/src
 ├── providers/       apps, projects, shell, github, clipboard, keepass, shortcuts,
 │                    files, infra (ssh, docker, services), windows, sys, processes,
 │                    browser (Chromium and Firefox history and bookmarks), qr, ip, img,
-│                    shell_history (zsh/bash/fish parsers), plugin host, system
+│                    ocr, shell_history (zsh/bash/fish parsers), plugin host, system
 └── ui/              launcher window, preferences window
 ```
 

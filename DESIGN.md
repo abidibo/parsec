@@ -261,6 +261,14 @@ Target: GNOME 46+, Wayland.
   shown as text, tables flattened to a line per row: Pango has no tables
   and the pane is 360 px. Set for `.md`/`.markdown` READMEs and
   `text/markdown` files, and plugin previews with `"markdown": true`.
+- 2026-11-16: `ocr` verb, native, backed by `tesseract` (optional). Reads
+  piped files, images copied in Files, or image data on the clipboard
+  (shared with `img`), caches the output per `(image, lang)`, shows the
+  full text and facts in Quick Look, pastes or copies on Enter, and pipes
+  the text on Ctrl+Enter. *Capture screen area* calls
+  `org.freedesktop.portal.Screenshot` (`interactive = true`) after the
+  window hides and re-opens the launcher on `ocr` via `app.show-query` once
+  the area is captured; `sys` screenshot shares the portal helper.
 
 ## Non-negotiables
 

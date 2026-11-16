@@ -555,23 +555,23 @@ fn encode(img: &Image, plan: &Plan) -> Result<(Vec<u8>, &'static str)> {
 // ---------------------------------------------------------------- input
 
 #[derive(Debug, Clone)]
-enum Source {
+pub(super) enum Source {
     File(PathBuf),
     /// Image data on the clipboard, as PNG.
     Data(std::sync::Arc<Vec<u8>>),
 }
 
 #[derive(Debug, Clone)]
-struct Image {
-    source: Source,
+pub(super) struct Image {
+    pub(super) source: Source,
     /// gdk-pixbuf's name for the format it was read as.
-    format: Option<String>,
-    width: u32,
-    height: u32,
+    pub(super) format: Option<String>,
+    pub(super) width: u32,
+    pub(super) height: u32,
 }
 
 impl Image {
-    fn name(&self) -> String {
+    pub(super) fn name(&self) -> String {
         match &self.source {
             Source::File(path) => path
                 .file_name()
@@ -581,9 +581,19 @@ impl Image {
         }
     }
 
-    fn is_data(&self) -> bool {
+    pub(super) fn is_data(&self) -> bool {
         matches!(self.source, Source::Data(_))
     }
+}
+
+pub(super) fn image_from_path(path: PathBuf) -> Option<Image> {
+    let (fmt, w, h) = Pixbuf::file_info(&path)?;
+    Some(Image {
+        format: fmt.name().map(|n| n.to_string()),
+        width: w as u32,
+        height: h as u32,
+        source: Source::File(path),
+    })
 }
 
 /// Paths on the clipboard: files copied in Files, or a copied path.
@@ -631,20 +641,12 @@ async fn copied_image_data() -> Option<Image> {
 
 /// The copied images: files that are images, with their size from the
 /// header, or else image data.
-async fn copied_images() -> Vec<Image> {
+pub(super) async fn copied_images() -> Vec<Image> {
     let paths = copied_paths().await;
     let files: Vec<Image> = gio::spawn_blocking(move || {
         paths
             .into_iter()
-            .filter_map(|path| {
-                let (fmt, w, h) = Pixbuf::file_info(&path)?;
-                Some(Image {
-                    format: fmt.name().map(|n| n.to_string()),
-                    width: w as u32,
-                    height: h as u32,
-                    source: Source::File(path),
-                })
-            })
+            .filter_map(image_from_path)
             .collect()
     })
     .await
@@ -657,7 +659,7 @@ async fn copied_images() -> Vec<Image> {
 
 // ---------------------------------------------------------------- output
 
-fn notify(title: &str, body: &str) {
+pub(super) fn notify(title: &str, body: &str) {
     if let Some(app) = gio::Application::default() {
         let n = gio::Notification::new(title);
         n.set_body(Some(body));

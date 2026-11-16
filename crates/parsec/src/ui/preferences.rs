@@ -636,6 +636,11 @@ fn providers_page(window: &adw::PreferencesWindow, cfg: SharedConfig) -> adw::Pr
             v.img,
             Box::new(|c: &mut Config, s: String| c.verbs.img = s),
         ),
+        (
+            "Text from images (OCR)",
+            v.ocr,
+            Box::new(|c: &mut Config, s: String| c.verbs.ocr = s),
+        ),
     ] {
         let set = Rc::new(set);
         verbs.add(&text_row(
